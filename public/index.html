@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Overview - Marketing Dashboard</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="main">
+      <header>
+        <div>
+          <h2>Overview</h2>
+          <div class="subtitle">Spend, leads, and conversions across all sources · mock data</div>
+        </div>
+      </header>
+
+      <div class="stat-grid" id="stat-grid"></div>
+
+      <div class="panel">
+        <h3>Spend &amp; conversions by platform</h3>
+        <table>
+          <thead>
+            <tr><th>Platform</th><th>Spend</th><th>Clicks</th><th>Conversions</th><th>Cost / Conversion</th></tr>
+          </thead>
+          <tbody id="platform-rows"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>Campaigns</h3>
+        <table>
+          <thead>
+            <tr><th>Campaign</th><th>Platform</th><th>Spend</th><th>Clicks</th><th>Conversions</th></tr>
+          </thead>
+          <tbody id="campaign-rows"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>Leads by source</h3>
+        <table>
+          <thead>
+            <tr><th>Source</th><th>Lead count</th></tr>
+          </thead>
+          <tbody id="source-rows"></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+  <script src="/js/nav.js"></script>
+  <script src="/js/overview.js"></script>
+</body>
+</html>

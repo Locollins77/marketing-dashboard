@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Leads &amp; Journey - Marketing Dashboard</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="main">
+      <header>
+        <div>
+          <h2>Leads &amp; Journey</h2>
+          <div class="subtitle">Every lead across all sources, tied to its CRM record · mock data</div>
+        </div>
+      </header>
+
+      <div class="panel">
+        <table>
+          <thead>
+            <tr>
+              <th>Contact</th>
+              <th>Source</th>
+              <th>Campaign</th>
+              <th>Created</th>
+              <th>LeadPerfection ID</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="lead-rows"></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+  <script src="/js/nav.js"></script>
+  <script src="/js/leads.js"></script>
+</body>
+</html>

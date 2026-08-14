@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lead Detail - Marketing Dashboard</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="main">
+      <a class="back-link" href="/leads.html">&larr; Back to leads</a>
+      <header>
+        <div>
+          <h2 id="lead-name">Loading…</h2>
+          <div class="subtitle" id="lead-subtitle"></div>
+        </div>
+        <span class="badge" id="lead-status-badge"></span>
+      </header>
+
+      <div class="panel">
+        <h3>Journey</h3>
+        <ul class="timeline" id="timeline"></ul>
+      </div>
+
+      <div class="panel">
+        <h3>Calls</h3>
+        <div id="calls-list"></div>
+      </div>
+
+      <div class="panel">
+        <h3>Texts</h3>
+        <div class="text-thread" id="texts-list"></div>
+      </div>
+    </main>
+  </div>
+  <script src="/js/nav.js"></script>
+  <script src="/js/lead-detail.js"></script>
+</body>
+</html>
