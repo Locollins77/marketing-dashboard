@@ -3,10 +3,16 @@ const whatconverts = require('./whatconverts');
 
 const LOOKBACK_DAYS = 30;
 
-function isoDaysAgo(days) {
+// WhatConverts rejects the milliseconds ISO precision Date#toISOString() produces
+// (e.g. 2026-08-14T20:51:11.123Z); it wants no fractional seconds.
+function formatWhatConvertsDate(date) {
+  return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+function daysAgoFormatted(days) {
   const d = new Date();
   d.setDate(d.getDate() - days);
-  return d.toISOString();
+  return formatWhatConvertsDate(d);
 }
 
 async function upsertMappedLead(mapped) {
@@ -47,8 +53,8 @@ async function upsertMappedLead(mapped) {
 }
 
 async function runWhatConvertsSync() {
-  const startDate = isoDaysAgo(LOOKBACK_DAYS);
-  const endDate = new Date().toISOString();
+  const startDate = daysAgoFormatted(LOOKBACK_DAYS);
+  const endDate = formatWhatConvertsDate(new Date());
 
   const rawLeads = await whatconverts.fetchAllLeads(startDate, endDate);
   let inserted = 0;
