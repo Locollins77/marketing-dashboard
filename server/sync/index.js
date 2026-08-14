@@ -19,7 +19,7 @@ async function upsertMappedLead(mapped) {
   const { rows } = await pool.query(
     `INSERT INTO leads (source_platform, source_campaign, contact_name, contact_info, created_at, status, external_id)
      VALUES ($1, $2, $3, $4, $5, 'new', $6)
-     ON CONFLICT (source_platform, external_id) DO NOTHING
+     ON CONFLICT (source_platform, external_id) WHERE external_id IS NOT NULL DO NOTHING
      RETURNING id`,
     [mapped.sourcePlatform, mapped.sourceCampaign, mapped.contactName, mapped.contactInfo, mapped.createdAt, mapped.externalId]
   );
