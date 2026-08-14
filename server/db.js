@@ -34,8 +34,15 @@ async function init() {
       contact_info TEXT NOT NULL,
       created_at TEXT NOT NULL,
       lead_perfection_id TEXT,
-      status TEXT NOT NULL DEFAULT 'new'
+      status TEXT NOT NULL DEFAULT 'new',
+      external_id TEXT
     );
+
+    ALTER TABLE leads ADD COLUMN IF NOT EXISTS external_id TEXT;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS leads_source_external_idx
+      ON leads (source_platform, external_id)
+      WHERE external_id IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS calls (
       id SERIAL PRIMARY KEY,

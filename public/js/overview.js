@@ -45,5 +45,34 @@ async function loadOverview() {
   `).join('');
 }
 
+async function syncWhatConverts() {
+  const button = document.getElementById('sync-button');
+  const status = document.getElementById('sync-status');
+  button.disabled = true;
+  status.textContent = 'Syncing…';
+
+  try {
+    const res = await fetch('/api/sync/whatconverts', { method: 'POST' });
+    if (res.status === 401) {
+      window.location.href = '/login.html';
+      return;
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      status.textContent = data.error || 'Sync failed';
+      return;
+    }
+    const summary = await res.json();
+    status.textContent = `Fetched ${summary.fetched}, added ${summary.inserted} new leads`;
+    await loadOverview();
+  } catch (err) {
+    status.textContent = 'Sync failed';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+document.getElementById('sync-button').addEventListener('click', syncWhatConverts);
+
 renderNav('overview');
 loadOverview();
