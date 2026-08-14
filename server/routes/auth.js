@@ -1,16 +1,18 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
-const db = require('../db');
+const { pool } = require('../db');
+const asyncHandler = require('../asyncHandler');
 
 const router = express.Router();
 
-router.post('/login', (req, res) => {
+router.post('/login', asyncHandler(async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password required' });
   }
 
-  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  const { rows } = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+  const user = rows[0];
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
@@ -18,7 +20,7 @@ router.post('/login', (req, res) => {
   req.session.userId = user.id;
   req.session.username = user.username;
   res.json({ username: user.username });
-});
+}));
 
 router.post('/logout', (req, res) => {
   req.session.destroy(() => {

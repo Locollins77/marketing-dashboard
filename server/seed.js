@@ -1,6 +1,6 @@
 require('dotenv').config();
 const bcrypt = require('bcrypt');
-const db = require('./db');
+const { pool, init } = require('./db');
 
 function daysAgo(n, hour = 9) {
   const d = new Date();
@@ -8,20 +8,6 @@ function daysAgo(n, hour = 9) {
   d.setHours(hour, 0, 0, 0);
   return d.toISOString();
 }
-
-db.exec(`
-  DELETE FROM journey_events;
-  DELETE FROM texts;
-  DELETE FROM calls;
-  DELETE FROM leads;
-  DELETE FROM campaigns;
-  DELETE FROM users;
-`);
-
-const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
-const passwordHash = bcrypt.hashSync(adminPassword, 10);
-db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run(adminUsername, passwordHash);
 
 const campaigns = [
   { platform: 'google', name: 'Search - Roofing Emergency', spend: 3120.45, clicks: 842, conversions: 38, date: daysAgo(20) },
@@ -31,27 +17,6 @@ const campaigns = [
   { platform: 'meta', name: 'Retargeting - Free Estimate', spend: 980.30, clicks: 654, conversions: 17, date: daysAgo(20) },
   { platform: 'meta', name: 'Lookalike - Homeowners 35+', spend: 1325.60, clicks: 890, conversions: 24, date: daysAgo(20) }
 ];
-const insertCampaign = db.prepare(
-  'INSERT INTO campaigns (platform, name, spend, clicks, conversions, date) VALUES (@platform, @name, @spend, @clicks, @conversions, @date)'
-);
-for (const c of campaigns) insertCampaign.run(c);
-
-const insertLead = db.prepare(`
-  INSERT INTO leads (source_platform, source_campaign, contact_name, contact_info, created_at, lead_perfection_id, status)
-  VALUES (@source_platform, @source_campaign, @contact_name, @contact_info, @created_at, @lead_perfection_id, @status)
-`);
-const insertEvent = db.prepare(`
-  INSERT INTO journey_events (lead_id, event_type, timestamp, metadata)
-  VALUES (@lead_id, @event_type, @timestamp, @metadata)
-`);
-const insertCall = db.prepare(`
-  INSERT INTO calls (lead_id, call_recording_url, transcript, duration, call_date)
-  VALUES (@lead_id, @call_recording_url, @transcript, @duration, @call_date)
-`);
-const insertText = db.prepare(`
-  INSERT INTO texts (lead_id, direction, message, sent_at, ai_generated)
-  VALUES (@lead_id, @direction, @message, @sent_at, @ai_generated)
-`);
 
 const leadSeeds = [
   {
@@ -124,72 +89,89 @@ const textPairs = [
   ["Thanks for chatting today! Here's the estimate summary we discussed, let me know if you have questions.", "Looks good, how do we move forward?"]
 ];
 
-leadSeeds.forEach((seed, i) => {
-  const createdAt = daysAgo(seed.daysBack, 9);
-  const info = insertLead.run({
-    source_platform: seed.platform,
-    source_campaign: seed.campaign,
-    contact_name: seed.name,
-    contact_info: seed.phone,
-    created_at: createdAt,
-    lead_perfection_id: seed.lpid,
-    status: seed.status
-  });
-  const leadId = info.lastInsertRowid;
-  const steps = funnelByStatus[seed.status];
+async function seed() {
+  await init();
+
+  await pool.query('DELETE FROM journey_events');
+  await pool.query('DELETE FROM texts');
+  await pool.query('DELETE FROM calls');
+  await pool.query('DELETE FROM leads');
+  await pool.query('DELETE FROM campaigns');
+  await pool.query('DELETE FROM users');
+
+  const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
+  const passwordHash = bcrypt.hashSync(adminPassword, 10);
+  await pool.query('INSERT INTO users (username, password_hash) VALUES ($1, $2)', [adminUsername, passwordHash]);
+
+  for (const c of campaigns) {
+    await pool.query(
+      'INSERT INTO campaigns (platform, name, spend, clicks, conversions, date) VALUES ($1, $2, $3, $4, $5, $6)',
+      [c.platform, c.name, c.spend, c.clicks, c.conversions, c.date]
+    );
+  }
+
   const stepHourOffsets = [0, 1, 26, 27, 50, 100];
 
-  steps.forEach((eventType, idx) => {
-    const ts = daysAgo(seed.daysBack, 9);
-    const eventDate = new Date(ts);
-    eventDate.setHours(eventDate.getHours() + stepHourOffsets[idx]);
-    const metadata = eventType === 'ad_click'
-      ? { platform: seed.platform, campaign: seed.campaign }
-      : eventType === 'crm_status_change'
-        ? { lead_perfection_id: seed.lpid, new_status: 'active_lead' }
-        : {};
-    insertEvent.run({
-      lead_id: leadId,
-      event_type: eventType,
-      timestamp: eventDate.toISOString(),
-      metadata: JSON.stringify(metadata)
-    });
-  });
+  for (let i = 0; i < leadSeeds.length; i++) {
+    const seed = leadSeeds[i];
+    const createdAt = daysAgo(seed.daysBack, 9);
 
-  if (steps.includes('call')) {
-    const callDate = new Date(createdAt);
-    callDate.setHours(callDate.getHours() + 26);
-    insertCall.run({
-      lead_id: leadId,
-      call_recording_url: `https://calls.example.com/recordings/${1000 + i}.mp3`,
-      transcript: transcripts[i % transcripts.length],
-      duration: 180 + (i % 5) * 45,
-      call_date: callDate.toISOString()
-    });
+    const { rows } = await pool.query(
+      `INSERT INTO leads (source_platform, source_campaign, contact_name, contact_info, created_at, lead_perfection_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [seed.platform, seed.campaign, seed.name, seed.phone, createdAt, seed.lpid, seed.status]
+    );
+    const leadId = rows[0].id;
+    const steps = funnelByStatus[seed.status];
+
+    for (let idx = 0; idx < steps.length; idx++) {
+      const eventType = steps[idx];
+      const eventDate = new Date(createdAt);
+      eventDate.setHours(eventDate.getHours() + stepHourOffsets[idx]);
+      const metadata = eventType === 'ad_click'
+        ? { platform: seed.platform, campaign: seed.campaign }
+        : eventType === 'crm_status_change'
+          ? { lead_perfection_id: seed.lpid, new_status: 'active_lead' }
+          : {};
+      await pool.query(
+        'INSERT INTO journey_events (lead_id, event_type, timestamp, metadata) VALUES ($1, $2, $3, $4)',
+        [leadId, eventType, eventDate.toISOString(), JSON.stringify(metadata)]
+      );
+    }
+
+    if (steps.includes('call')) {
+      const callDate = new Date(createdAt);
+      callDate.setHours(callDate.getHours() + 26);
+      await pool.query(
+        'INSERT INTO calls (lead_id, call_recording_url, transcript, duration, call_date) VALUES ($1, $2, $3, $4, $5)',
+        [leadId, `https://calls.example.com/recordings/${1000 + i}.mp3`, transcripts[i % transcripts.length], 180 + (i % 5) * 45, callDate.toISOString()]
+      );
+    }
+
+    if (steps.includes('text')) {
+      const [outMsg, inMsg] = textPairs[i % textPairs.length];
+      const textDate = new Date(createdAt);
+      textDate.setHours(textDate.getHours() + 50);
+      await pool.query(
+        'INSERT INTO texts (lead_id, direction, message, sent_at, ai_generated) VALUES ($1, $2, $3, $4, $5)',
+        [leadId, 'out', outMsg.replace('{name}', seed.name.split(' ')[0]), textDate.toISOString(), 0]
+      );
+      const replyDate = new Date(textDate);
+      replyDate.setHours(replyDate.getHours() + 2);
+      await pool.query(
+        'INSERT INTO texts (lead_id, direction, message, sent_at, ai_generated) VALUES ($1, $2, $3, $4, $5)',
+        [leadId, 'in', inMsg, replyDate.toISOString(), 0]
+      );
+    }
   }
 
-  if (steps.includes('text')) {
-    const [outMsg, inMsg] = textPairs[i % textPairs.length];
-    const textDate = new Date(createdAt);
-    textDate.setHours(textDate.getHours() + 50);
-    insertText.run({
-      lead_id: leadId,
-      direction: 'out',
-      message: outMsg.replace('{name}', seed.name.split(' ')[0]),
-      sent_at: textDate.toISOString(),
-      ai_generated: 0
-    });
-    const replyDate = new Date(textDate);
-    replyDate.setHours(replyDate.getHours() + 2);
-    insertText.run({
-      lead_id: leadId,
-      direction: 'in',
-      message: inMsg,
-      sent_at: replyDate.toISOString(),
-      ai_generated: 0
-    });
-  }
+  console.log(`Seeded ${campaigns.length} campaigns and ${leadSeeds.length} leads.`);
+  console.log(`Login with username "${adminUsername}" and the password set in .env (ADMIN_PASSWORD).`);
+  await pool.end();
+}
+
+seed().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
-
-console.log(`Seeded ${campaigns.length} campaigns and ${leadSeeds.length} leads.`);
-console.log(`Login with username "${adminUsername}" and the password set in .env (ADMIN_PASSWORD).`);

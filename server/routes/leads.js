@@ -1,42 +1,43 @@
 const express = require('express');
-const db = require('../db');
+const { pool } = require('../db');
+const asyncHandler = require('../asyncHandler');
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
-  const leads = db.prepare(`
+router.get('/', asyncHandler(async (req, res) => {
+  const { rows } = await pool.query(`
     SELECT id, source_platform, source_campaign, contact_name, contact_info,
            created_at, lead_perfection_id, status
     FROM leads
     ORDER BY created_at DESC
-  `).all();
-  res.json(leads);
-});
+  `);
+  res.json(rows);
+}));
 
-router.get('/:id', (req, res) => {
-  const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+router.get('/:id', asyncHandler(async (req, res) => {
+  const leadResult = await pool.query('SELECT * FROM leads WHERE id = $1', [req.params.id]);
+  const lead = leadResult.rows[0];
   if (!lead) {
     return res.status(404).json({ error: 'Lead not found' });
   }
 
-  const events = db.prepare(`
-    SELECT id, event_type, timestamp, metadata
-    FROM journey_events
-    WHERE lead_id = ?
-    ORDER BY timestamp ASC
-  `).all(lead.id).map((e) => ({ ...e, metadata: e.metadata ? JSON.parse(e.metadata) : null }));
+  const eventsResult = await pool.query(
+    `SELECT id, event_type, timestamp, metadata FROM journey_events WHERE lead_id = $1 ORDER BY timestamp ASC`,
+    [lead.id]
+  );
+  const events = eventsResult.rows.map((e) => ({ ...e, metadata: e.metadata ? JSON.parse(e.metadata) : null }));
 
-  const calls = db.prepare(`
-    SELECT id, call_recording_url, transcript, duration, call_date
-    FROM calls WHERE lead_id = ? ORDER BY call_date ASC
-  `).all(lead.id);
+  const callsResult = await pool.query(
+    `SELECT id, call_recording_url, transcript, duration, call_date FROM calls WHERE lead_id = $1 ORDER BY call_date ASC`,
+    [lead.id]
+  );
 
-  const texts = db.prepare(`
-    SELECT id, direction, message, sent_at, ai_generated
-    FROM texts WHERE lead_id = ? ORDER BY sent_at ASC
-  `).all(lead.id);
+  const textsResult = await pool.query(
+    `SELECT id, direction, message, sent_at, ai_generated FROM texts WHERE lead_id = $1 ORDER BY sent_at ASC`,
+    [lead.id]
+  );
 
-  res.json({ lead, events, calls, texts });
-});
+  res.json({ lead, events, calls: callsResult.rows, texts: textsResult.rows });
+}));
 
 module.exports = router;

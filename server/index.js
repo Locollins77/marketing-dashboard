@@ -2,7 +2,9 @@ require('dotenv').config();
 const path = require('path');
 const express = require('express');
 const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 
+const { pool, init } = require('./db');
 const requireAuth = require('./middleware/requireAuth');
 const authRoutes = require('./routes/auth');
 const overviewRoutes = require('./routes/overview');
@@ -14,6 +16,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
+  store: new pgSession({ pool, createTableIfMissing: true }),
   secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
   resave: false,
   saveUninitialized: false,
@@ -31,6 +34,21 @@ app.get(['/', '/index.html', '/leads.html', '/lead-detail.html'], requireAuth, (
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-app.listen(PORT, () => {
-  console.log(`Marketing dashboard running at http://localhost:${PORT}`);
+app.use((err, req, res, next) => {
+  console.error(err);
+  if (req.path.startsWith('/api/')) {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+  res.status(500).send('Internal server error');
 });
+
+init()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Marketing dashboard running at http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
+  });
