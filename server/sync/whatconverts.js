@@ -59,7 +59,16 @@ function pickContactInfo(lead) {
     || 'unknown';
 }
 
+// WhatConverts' actual API returns lead_type as "Phone Call" / "Web Form" title-case
+// strings, not the snake_case values ("phone_call") their docs describe - normalize
+// before matching so the mapping below isn't silently skipped.
+function normalizeLeadType(rawType) {
+  return String(rawType || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
 function mapLead(lead) {
+  const leadType = normalizeLeadType(lead.lead_type);
+
   return {
     externalId: String(lead.lead_id),
     sourcePlatform: 'whatconverts',
@@ -67,7 +76,7 @@ function mapLead(lead) {
     contactName: lead.contact_name || 'Unknown',
     contactInfo: pickContactInfo(lead),
     createdAt: lead.date_created,
-    eventType: EVENT_TYPE_MAP[lead.lead_type] || lead.lead_type || 'other',
+    eventType: EVENT_TYPE_MAP[leadType] || leadType || 'other',
     eventMetadata: {
       platform: 'whatconverts',
       lead_type: lead.lead_type,
@@ -76,13 +85,13 @@ function mapLead(lead) {
       campaign: lead.lead_campaign,
       keyword: lead.lead_keyword
     },
-    call: lead.lead_type === 'phone_call' ? {
+    call: leadType === 'phone_call' ? {
       recordingUrl: lead.recording || lead.play_recording || null,
       transcript: lead.call_transcription || null,
       duration: lead.call_duration_seconds != null ? Number(lead.call_duration_seconds) : null,
       callDate: lead.date_created
     } : null,
-    text: lead.lead_type === 'text_message' ? {
+    text: leadType === 'text_message' ? {
       direction: 'in',
       message: lead.message || '',
       sentAt: lead.date_created
