@@ -59,8 +59,9 @@ async function loadLeadDetail() {
   const { lead, events, calls, texts } = await res.json();
 
   document.getElementById('lead-name').textContent = lead.contact_name;
+  const brandLabel = BRAND_LABELS[lead.brand] || lead.brand || 'no brand';
   document.getElementById('lead-subtitle').textContent =
-    `${lead.contact_info} · ${lead.source_platform.replace('_', ' ')} · ${lead.source_campaign || 'no campaign'}`;
+    `${lead.contact_info} · ${brandLabel} · ${lead.source_platform.replace('_', ' ')} · ${lead.source_campaign || 'no campaign'}`;
   const badge = document.getElementById('lead-status-badge');
   badge.textContent = lead.status;
   badge.className = `badge ${lead.status}`;

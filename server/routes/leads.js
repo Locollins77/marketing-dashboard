@@ -5,12 +5,17 @@ const asyncHandler = require('../asyncHandler');
 const router = express.Router();
 
 router.get('/', asyncHandler(async (req, res) => {
+  const brand = req.query.brand && req.query.brand !== 'all' ? req.query.brand : null;
+  const where = brand ? 'WHERE brand = $1' : '';
+  const params = brand ? [brand] : [];
+
   const { rows } = await pool.query(`
     SELECT id, source_platform, source_campaign, contact_name, contact_info,
-           created_at, lead_perfection_id, status
+           created_at, lead_perfection_id, status, brand
     FROM leads
+    ${where}
     ORDER BY created_at DESC
-  `);
+  `, params);
   res.json(rows);
 }));
 

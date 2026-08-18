@@ -8,16 +8,12 @@ const EVENT_TYPE_MAP = {
   transaction: 'conversion'
 };
 
-function authHeader() {
-  const token = process.env.WHATCONVERTS_API_TOKEN;
-  const secret = process.env.WHATCONVERTS_API_SECRET;
-  if (!token || !secret) {
-    throw new Error('WHATCONVERTS_API_TOKEN and WHATCONVERTS_API_SECRET must be set');
-  }
+function authHeader(credentials) {
+  const { token, secret } = credentials;
   return `Basic ${Buffer.from(`${token}:${secret}`).toString('base64')}`;
 }
 
-async function fetchLeadsPage(startDate, endDate, pageNumber) {
+async function fetchLeadsPage(startDate, endDate, pageNumber, credentials) {
   const params = new URLSearchParams({
     start_date: startDate,
     end_date: endDate,
@@ -27,7 +23,7 @@ async function fetchLeadsPage(startDate, endDate, pageNumber) {
   });
 
   const res = await fetch(`${BASE_URL}/leads?${params.toString()}`, {
-    headers: { Authorization: authHeader() }
+    headers: { Authorization: authHeader(credentials) }
   });
 
   if (!res.ok) {
@@ -38,12 +34,12 @@ async function fetchLeadsPage(startDate, endDate, pageNumber) {
   return res.json();
 }
 
-async function fetchAllLeads(startDate, endDate) {
+async function fetchAllLeads(startDate, endDate, credentials) {
   const allLeads = [];
   let pageNumber = 1;
 
   while (true) {
-    const data = await fetchLeadsPage(startDate, endDate, pageNumber);
+    const data = await fetchLeadsPage(startDate, endDate, pageNumber, credentials);
     const leads = data.leads || [];
     allLeads.push(...leads);
     if (leads.length < LEADS_PER_PAGE) break;
@@ -66,12 +62,13 @@ function normalizeLeadType(rawType) {
   return String(rawType || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
 }
 
-function mapLead(lead) {
+function mapLead(lead, brand) {
   const leadType = normalizeLeadType(lead.lead_type);
 
   return {
     externalId: String(lead.lead_id),
     sourcePlatform: 'whatconverts',
+    brand,
     sourceCampaign: lead.lead_campaign || lead.lead_source || lead.profile || null,
     contactName: lead.contact_name || 'Unknown',
     contactInfo: pickContactInfo(lead),

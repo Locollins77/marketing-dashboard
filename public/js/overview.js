@@ -2,7 +2,8 @@ const currency = (n) => `$${Number(n).toLocaleString(undefined, { minimumFractio
 const number = (n) => Number(n).toLocaleString();
 
 async function loadOverview() {
-  const res = await fetch('/api/overview');
+  const brand = getSelectedBrand();
+  const res = await fetch(`/api/overview?brand=${encodeURIComponent(brand)}`);
   if (res.status === 401) {
     window.location.href = '/login.html';
     return;
@@ -63,7 +64,10 @@ async function syncWhatConverts() {
       return;
     }
     const summary = await res.json();
-    status.textContent = `Fetched ${summary.fetched}, added ${summary.inserted} new leads`;
+    const perBrand = summary.brands
+      .map((b) => `${BRAND_LABELS[b.brand] || b.brand}: ${b.skipped ? 'no credentials' : `${b.fetched} fetched, ${b.inserted} new`}`)
+      .join(' · ');
+    status.textContent = perBrand;
     await loadOverview();
   } catch (err) {
     status.textContent = 'Sync failed';
@@ -75,4 +79,5 @@ async function syncWhatConverts() {
 document.getElementById('sync-button').addEventListener('click', syncWhatConverts);
 
 renderNav('overview');
+renderBrandFilter('brand-filter', loadOverview);
 loadOverview();

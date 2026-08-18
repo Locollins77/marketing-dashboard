@@ -91,6 +91,22 @@ a:hover { text-decoration: underline; }
 .sync-button:hover { background: var(--primary-dark); }
 .sync-button:disabled { opacity: 0.6; cursor: default; }
 
+.brand-select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .sync-status {
   font-size: 12px;
   color: var(--text-muted);

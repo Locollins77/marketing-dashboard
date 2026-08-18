@@ -10,61 +10,61 @@ function daysAgo(n, hour = 9) {
 }
 
 const campaigns = [
-  { platform: 'google', name: 'Search - Roofing Emergency', spend: 3120.45, clicks: 842, conversions: 38, date: daysAgo(20) },
-  { platform: 'google', name: 'Search - Gutter Install', spend: 1875.10, clicks: 511, conversions: 22, date: daysAgo(20) },
-  { platform: 'google', name: 'PMax - Storm Damage', spend: 2410.00, clicks: 690, conversions: 19, date: daysAgo(20) },
-  { platform: 'meta', name: 'Lead Form - Roof Inspection', spend: 1640.75, clicks: 1203, conversions: 41, date: daysAgo(20) },
-  { platform: 'meta', name: 'Retargeting - Free Estimate', spend: 980.30, clicks: 654, conversions: 17, date: daysAgo(20) },
-  { platform: 'meta', name: 'Lookalike - Homeowners 35+', spend: 1325.60, clicks: 890, conversions: 24, date: daysAgo(20) }
+  { platform: 'google', name: 'Search - Roofing Emergency', spend: 3120.45, clicks: 842, conversions: 38, date: daysAgo(20), brand: 'seamless' },
+  { platform: 'google', name: 'Search - Gutter Install', spend: 1875.10, clicks: 511, conversions: 22, date: daysAgo(20), brand: 'seamless' },
+  { platform: 'google', name: 'PMax - Storm Damage', spend: 2410.00, clicks: 690, conversions: 19, date: daysAgo(20), brand: 'bathshower' },
+  { platform: 'meta', name: 'Lead Form - Roof Inspection', spend: 1640.75, clicks: 1203, conversions: 41, date: daysAgo(20), brand: 'seamless' },
+  { platform: 'meta', name: 'Retargeting - Free Estimate', spend: 980.30, clicks: 654, conversions: 17, date: daysAgo(20), brand: 'bathshower' },
+  { platform: 'meta', name: 'Lookalike - Homeowners 35+', spend: 1325.60, clicks: 890, conversions: 24, date: daysAgo(20), brand: 'bathshower' }
 ];
 
 const leadSeeds = [
   {
-    name: 'Karen Whitfield', phone: '(614) 555-0142', platform: 'google_ads',
+    name: 'Karen Whitfield', phone: '(614) 555-0142', platform: 'google_ads', brand: 'seamless',
     campaign: 'Search - Roofing Emergency', daysBack: 14, status: 'converted', lpid: 'LP-10234'
   },
   {
-    name: 'Marcus Boyd', phone: '(614) 555-0187', platform: 'meta_ads',
+    name: 'Marcus Boyd', phone: '(614) 555-0187', platform: 'meta_ads', brand: 'seamless',
     campaign: 'Lead Form - Roof Inspection', daysBack: 12, status: 'appointment', lpid: 'LP-10241'
   },
   {
-    name: 'Priya Nair', phone: '(614) 555-0163', platform: 'whatconverts',
+    name: 'Priya Nair', phone: '(614) 555-0163', platform: 'whatconverts', brand: 'bathshower',
     campaign: 'Organic - Google Business Profile', daysBack: 11, status: 'contacted', lpid: 'LP-10255'
   },
   {
-    name: 'Devon Ellis', phone: '(614) 555-0129', platform: 'google_ads',
+    name: 'Devon Ellis', phone: '(614) 555-0129', platform: 'google_ads', brand: 'bathshower',
     campaign: 'Search - Gutter Install', daysBack: 10, status: 'new', lpid: null
   },
   {
-    name: 'Sam Okafor', phone: '(614) 555-0198', platform: 'meta_ads',
+    name: 'Sam Okafor', phone: '(614) 555-0198', platform: 'meta_ads', brand: 'bathshower',
     campaign: 'Retargeting - Free Estimate', daysBack: 9, status: 'lost', lpid: 'LP-10260'
   },
   {
-    name: 'Lindsey Marsh', phone: '(614) 555-0177', platform: 'google_ads',
+    name: 'Lindsey Marsh', phone: '(614) 555-0177', platform: 'google_ads', brand: 'bathshower',
     campaign: 'PMax - Storm Damage', daysBack: 8, status: 'converted', lpid: 'LP-10266'
   },
   {
-    name: 'Tyrell Banks', phone: '(614) 555-0115', platform: 'whatconverts',
+    name: 'Tyrell Banks', phone: '(614) 555-0115', platform: 'whatconverts', brand: 'seamless',
     campaign: 'Call Tracking - Main Line', daysBack: 7, status: 'appointment', lpid: 'LP-10271'
   },
   {
-    name: 'Olivia Chen', phone: '(614) 555-0104', platform: 'meta_ads',
+    name: 'Olivia Chen', phone: '(614) 555-0104', platform: 'meta_ads', brand: 'bathshower',
     campaign: 'Lookalike - Homeowners 35+', daysBack: 6, status: 'contacted', lpid: null
   },
   {
-    name: 'Reggie Osei', phone: '(614) 555-0192', platform: 'google_ads',
+    name: 'Reggie Osei', phone: '(614) 555-0192', platform: 'google_ads', brand: 'seamless',
     campaign: 'Search - Roofing Emergency', daysBack: 4, status: 'new', lpid: null
   },
   {
-    name: 'Hannah Brooks', phone: '(614) 555-0158', platform: 'meta_ads',
+    name: 'Hannah Brooks', phone: '(614) 555-0158', platform: 'meta_ads', brand: 'seamless',
     campaign: 'Lead Form - Roof Inspection', daysBack: 3, status: 'appointment', lpid: 'LP-10289'
   },
   {
-    name: 'Julian Vega', phone: '(614) 555-0146', platform: 'whatconverts',
+    name: 'Julian Vega', phone: '(614) 555-0146', platform: 'whatconverts', brand: 'seamless',
     campaign: 'Call Tracking - Main Line', daysBack: 2, status: 'new', lpid: null
   },
   {
-    name: 'Faith Adeyemi', phone: '(614) 555-0133', platform: 'google_ads',
+    name: 'Faith Adeyemi', phone: '(614) 555-0133', platform: 'google_ads', brand: 'bathshower',
     campaign: 'Search - Gutter Install', daysBack: 1, status: 'contacted', lpid: null
   }
 ];
@@ -106,8 +106,8 @@ async function seed() {
 
   for (const c of campaigns) {
     await pool.query(
-      'INSERT INTO campaigns (platform, name, spend, clicks, conversions, date) VALUES ($1, $2, $3, $4, $5, $6)',
-      [c.platform, c.name, c.spend, c.clicks, c.conversions, c.date]
+      'INSERT INTO campaigns (platform, name, spend, clicks, conversions, date, brand) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [c.platform, c.name, c.spend, c.clicks, c.conversions, c.date, c.brand]
     );
   }
 
@@ -118,9 +118,9 @@ async function seed() {
     const createdAt = daysAgo(seed.daysBack, 9);
 
     const { rows } = await pool.query(
-      `INSERT INTO leads (source_platform, source_campaign, contact_name, contact_info, created_at, lead_perfection_id, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [seed.platform, seed.campaign, seed.name, seed.phone, createdAt, seed.lpid, seed.status]
+      `INSERT INTO leads (source_platform, source_campaign, contact_name, contact_info, created_at, lead_perfection_id, status, brand)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [seed.platform, seed.campaign, seed.name, seed.phone, createdAt, seed.lpid, seed.status, seed.brand]
     );
     const leadId = rows[0].id;
     const steps = funnelByStatus[seed.status];
@@ -135,8 +135,8 @@ async function seed() {
           ? { lead_perfection_id: seed.lpid, new_status: 'active_lead' }
           : {};
       await pool.query(
-        'INSERT INTO journey_events (lead_id, event_type, timestamp, metadata) VALUES ($1, $2, $3, $4)',
-        [leadId, eventType, eventDate.toISOString(), JSON.stringify(metadata)]
+        'INSERT INTO journey_events (lead_id, event_type, timestamp, metadata, brand) VALUES ($1, $2, $3, $4, $5)',
+        [leadId, eventType, eventDate.toISOString(), JSON.stringify(metadata), seed.brand]
       );
     }
 

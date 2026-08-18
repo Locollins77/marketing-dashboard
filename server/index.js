@@ -11,7 +11,7 @@ const authRoutes = require('./routes/auth');
 const overviewRoutes = require('./routes/overview');
 const leadsRoutes = require('./routes/leads');
 const syncRoutes = require('./routes/sync');
-const { runWhatConvertsSync } = require('./sync');
+const { runWhatConvertsSync, hasAnyWhatConvertsCredentials } = require('./sync');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -47,8 +47,8 @@ app.use((err, req, res, next) => {
 });
 
 function startWhatConvertsSync() {
-  if (!process.env.WHATCONVERTS_API_TOKEN || !process.env.WHATCONVERTS_API_SECRET) {
-    console.log('[sync] WhatConverts credentials not set, skipping sync');
+  if (!hasAnyWhatConvertsCredentials()) {
+    console.log('[sync] No WhatConverts brand credentials set, skipping sync');
     return;
   }
   runWhatConvertsSync().catch((err) => console.error('[sync] whatconverts failed:', err));

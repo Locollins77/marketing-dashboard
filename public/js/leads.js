@@ -3,7 +3,8 @@ function formatDate(iso) {
 }
 
 async function loadLeads() {
-  const res = await fetch('/api/leads');
+  const brand = getSelectedBrand();
+  const res = await fetch(`/api/leads?brand=${encodeURIComponent(brand)}`);
   if (res.status === 401) {
     window.location.href = '/login.html';
     return;
@@ -13,6 +14,7 @@ async function loadLeads() {
   document.getElementById('lead-rows').innerHTML = leads.map((l) => `
     <tr onclick="window.location.href='/lead-detail.html?id=${l.id}'">
       <td>${escapeHtml(l.contact_name)}<div class="platform-tag">${escapeHtml(l.contact_info)}</div></td>
+      <td>${escapeHtml(BRAND_LABELS[l.brand] || l.brand || '—')}</td>
       <td style="text-transform:capitalize">${escapeHtml(l.source_platform.replace('_', ' '))}</td>
       <td>${escapeHtml(l.source_campaign) || '—'}</td>
       <td>${formatDate(l.created_at)}</td>
@@ -23,4 +25,5 @@ async function loadLeads() {
 }
 
 renderNav('leads');
+renderBrandFilter('brand-filter', loadLeads);
 loadLeads();
