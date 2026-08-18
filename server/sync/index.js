@@ -1,11 +1,17 @@
 const { pool } = require('../db');
 const whatconverts = require('./whatconverts');
+const googleAds = require('./googleAds');
 
 const LOOKBACK_DAYS = 30;
 
 const WHATCONVERTS_BRANDS = [
   { key: 'seamless', label: 'Rainbow Seamless Systems', tokenEnv: 'WHATCONVERTS_SEAMLESS_TOKEN', secretEnv: 'WHATCONVERTS_SEAMLESS_SECRET' },
   { key: 'bathshower', label: 'Rainbow Bath and Shower', tokenEnv: 'WHATCONVERTS_BATHSHOWER_TOKEN', secretEnv: 'WHATCONVERTS_BATHSHOWER_SECRET' }
+];
+
+const GOOGLE_ADS_BRANDS = [
+  { key: 'seamless', label: 'Rainbow Seamless Systems', customerIdEnv: 'GOOGLE_ADS_SEAMLESS_CUSTOMER_ID' },
+  { key: 'bathshower', label: 'Rainbow Bath and Shower', customerIdEnv: 'GOOGLE_ADS_BATHSHOWER_CUSTOMER_ID' }
 ];
 
 // WhatConverts rejects the milliseconds ISO precision Date#toISOString() produces
@@ -106,4 +112,91 @@ function hasAnyWhatConvertsCredentials() {
   return WHATCONVERTS_BRANDS.some((b) => process.env[b.tokenEnv] && process.env[b.secretEnv]);
 }
 
-module.exports = { runWhatConvertsSync, hasAnyWhatConvertsCredentials, WHATCONVERTS_BRANDS };
+function normalizeCustomerId(id) {
+  return String(id).replace(/-/g, '');
+}
+
+function getGoogleAdsSharedCredentials() {
+  const { GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN, GOOGLE_ADS_LOGIN_CUSTOMER_ID } = process.env;
+  if (!GOOGLE_ADS_DEVELOPER_TOKEN || !GOOGLE_ADS_CLIENT_ID || !GOOGLE_ADS_CLIENT_SECRET || !GOOGLE_ADS_REFRESH_TOKEN || !GOOGLE_ADS_LOGIN_CUSTOMER_ID) {
+    return null;
+  }
+  return {
+    developerToken: GOOGLE_ADS_DEVELOPER_TOKEN,
+    clientId: GOOGLE_ADS_CLIENT_ID,
+    clientSecret: GOOGLE_ADS_CLIENT_SECRET,
+    refreshToken: GOOGLE_ADS_REFRESH_TOKEN,
+    loginCustomerId: normalizeCustomerId(GOOGLE_ADS_LOGIN_CUSTOMER_ID)
+  };
+}
+
+async function upsertMappedCampaign(mapped) {
+  const { rows } = await pool.query(
+    `INSERT INTO campaigns (platform, name, spend, clicks, conversions, date, brand, external_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (platform, brand, external_id) WHERE external_id IS NOT NULL AND brand IS NOT NULL
+     DO UPDATE SET name = EXCLUDED.name, spend = EXCLUDED.spend, clicks = EXCLUDED.clicks,
+       conversions = EXCLUDED.conversions, date = EXCLUDED.date
+     RETURNING (xmax = 0) AS inserted`,
+    [mapped.platform, mapped.name, mapped.spend, mapped.clicks, mapped.conversions, mapped.date, mapped.brand, mapped.externalId]
+  );
+  return { inserted: rows[0].inserted };
+}
+
+async function syncGoogleAdsBrand(brandConfig, credentials, accessToken, syncDate) {
+  const customerId = process.env[brandConfig.customerIdEnv];
+  if (!customerId) {
+    console.log(`[sync] google_ads (${brandConfig.key}): customer ID not set, skipping`);
+    return { brand: brandConfig.key, skipped: true, fetched: 0, inserted: 0, updated: 0 };
+  }
+
+  const rawCampaigns = await googleAds.fetchCampaigns(normalizeCustomerId(customerId), credentials, accessToken);
+  let inserted = 0;
+  let updated = 0;
+
+  for (const raw of rawCampaigns) {
+    const mapped = googleAds.mapCampaign(raw, brandConfig.key, syncDate);
+    const result = await upsertMappedCampaign(mapped);
+    if (result.inserted) inserted += 1; else updated += 1;
+  }
+
+  console.log(`[sync] google_ads (${brandConfig.key}): fetched ${rawCampaigns.length}, inserted ${inserted}, updated ${updated}`);
+  return { brand: brandConfig.key, skipped: false, fetched: rawCampaigns.length, inserted, updated };
+}
+
+async function runGoogleAdsSync() {
+  const credentials = getGoogleAdsSharedCredentials();
+  if (!credentials) {
+    console.log('[sync] google_ads: credentials not fully set, skipping');
+    return { platform: 'google_ads', fetched: 0, inserted: 0, updated: 0, brands: [] };
+  }
+
+  const accessToken = await googleAds.getAccessToken(credentials);
+  const syncDate = new Date().toISOString();
+
+  const results = [];
+  for (const brandConfig of GOOGLE_ADS_BRANDS) {
+    results.push(await syncGoogleAdsBrand(brandConfig, credentials, accessToken, syncDate));
+  }
+
+  const totals = results.reduce((acc, r) => ({
+    fetched: acc.fetched + r.fetched,
+    inserted: acc.inserted + r.inserted,
+    updated: acc.updated + r.updated
+  }), { fetched: 0, inserted: 0, updated: 0 });
+
+  return { platform: 'google_ads', ...totals, brands: results };
+}
+
+function hasAnyGoogleAdsCredentials() {
+  return Boolean(getGoogleAdsSharedCredentials()) && GOOGLE_ADS_BRANDS.some((b) => process.env[b.customerIdEnv]);
+}
+
+module.exports = {
+  runWhatConvertsSync,
+  hasAnyWhatConvertsCredentials,
+  WHATCONVERTS_BRANDS,
+  runGoogleAdsSync,
+  hasAnyGoogleAdsCredentials,
+  GOOGLE_ADS_BRANDS
+};

@@ -46,14 +46,23 @@ async function loadOverview() {
   `).join('');
 }
 
-async function syncWhatConverts() {
-  const button = document.getElementById('sync-button');
-  const status = document.getElementById('sync-status');
+function formatBrandResult(b) {
+  const label = BRAND_LABELS[b.brand] || b.brand;
+  if (b.skipped) return `${label}: no credentials`;
+  const parts = [`${b.fetched} fetched`];
+  if ('inserted' in b) parts.push(`${b.inserted} new`);
+  if ('updated' in b) parts.push(`${b.updated} updated`);
+  return `${label}: ${parts.join(', ')}`;
+}
+
+async function runSync(endpoint, buttonId, statusId) {
+  const button = document.getElementById(buttonId);
+  const status = document.getElementById(statusId);
   button.disabled = true;
   status.textContent = 'Syncing…';
 
   try {
-    const res = await fetch('/api/sync/whatconverts', { method: 'POST' });
+    const res = await fetch(endpoint, { method: 'POST' });
     if (res.status === 401) {
       window.location.href = '/login.html';
       return;
@@ -64,10 +73,7 @@ async function syncWhatConverts() {
       return;
     }
     const summary = await res.json();
-    const perBrand = summary.brands
-      .map((b) => `${BRAND_LABELS[b.brand] || b.brand}: ${b.skipped ? 'no credentials' : `${b.fetched} fetched, ${b.inserted} new`}`)
-      .join(' · ');
-    status.textContent = perBrand;
+    status.textContent = summary.brands.map(formatBrandResult).join(' · ');
     await loadOverview();
   } catch (err) {
     status.textContent = 'Sync failed';
@@ -76,7 +82,13 @@ async function syncWhatConverts() {
   }
 }
 
-document.getElementById('sync-button').addEventListener('click', syncWhatConverts);
+document.getElementById('sync-button').addEventListener('click', () => {
+  runSync('/api/sync/whatconverts', 'sync-button', 'sync-status');
+});
+
+document.getElementById('sync-google-ads-button').addEventListener('click', () => {
+  runSync('/api/sync/google-ads', 'sync-google-ads-button', 'sync-google-ads-status');
+});
 
 renderNav('overview');
 renderBrandFilter('brand-filter', loadOverview);

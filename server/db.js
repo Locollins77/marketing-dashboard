@@ -24,7 +24,8 @@ async function init() {
       clicks INTEGER NOT NULL DEFAULT 0,
       conversions INTEGER NOT NULL DEFAULT 0,
       date TEXT NOT NULL,
-      brand TEXT
+      brand TEXT,
+      external_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS leads (
@@ -71,6 +72,7 @@ async function init() {
     ALTER TABLE leads ADD COLUMN IF NOT EXISTS external_id TEXT;
     ALTER TABLE leads ADD COLUMN IF NOT EXISTS brand TEXT;
     ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS brand TEXT;
+    ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS external_id TEXT;
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS brand TEXT;
 
     -- One-time backfill: leads synced before multi-brand support was added all came
@@ -88,6 +90,10 @@ async function init() {
 
     CREATE UNIQUE INDEX IF NOT EXISTS leads_source_brand_external_idx
       ON leads (source_platform, brand, external_id)
+      WHERE external_id IS NOT NULL AND brand IS NOT NULL;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS campaigns_platform_brand_external_idx
+      ON campaigns (platform, brand, external_id)
       WHERE external_id IS NOT NULL AND brand IS NOT NULL;
   `);
 }

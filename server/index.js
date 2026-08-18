@@ -11,7 +11,7 @@ const authRoutes = require('./routes/auth');
 const overviewRoutes = require('./routes/overview');
 const leadsRoutes = require('./routes/leads');
 const syncRoutes = require('./routes/sync');
-const { runWhatConvertsSync, hasAnyWhatConvertsCredentials } = require('./sync');
+const { runWhatConvertsSync, hasAnyWhatConvertsCredentials, runGoogleAdsSync, hasAnyGoogleAdsCredentials } = require('./sync');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -57,12 +57,24 @@ function startWhatConvertsSync() {
   });
 }
 
+function startGoogleAdsSync() {
+  if (!hasAnyGoogleAdsCredentials()) {
+    console.log('[sync] Google Ads credentials not set, skipping sync');
+    return;
+  }
+  runGoogleAdsSync().catch((err) => console.error('[sync] google_ads failed:', err));
+  cron.schedule('*/30 * * * *', () => {
+    runGoogleAdsSync().catch((err) => console.error('[sync] google_ads failed:', err));
+  });
+}
+
 init()
   .then(() => {
     app.listen(PORT, () => {
       console.log(`Marketing dashboard running at http://localhost:${PORT}`);
     });
     startWhatConvertsSync();
+    startGoogleAdsSync();
   })
   .catch((err) => {
     console.error('Failed to initialize database:', err);
