@@ -62,7 +62,7 @@ async function loadLeadDetail() {
   document.getElementById('calls-list').innerHTML = calls.map((c) => `
     <div style="margin-bottom:14px">
       <div class="platform-tag">${formatDateTime(c.call_date)} · ${Math.round(c.duration / 60)} min</div>
-      <div style="font-size:13px;margin-top:4px">${c.transcript || 'No transcript available.'}</div>
+      <div class="transcript">${c.transcript || 'No transcript available.'}</div>
     </div>
   `).join('') || '<div class="platform-tag">No calls recorded yet.</div>';
 
