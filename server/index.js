@@ -11,7 +11,11 @@ const authRoutes = require('./routes/auth');
 const overviewRoutes = require('./routes/overview');
 const leadsRoutes = require('./routes/leads');
 const syncRoutes = require('./routes/sync');
-const { runWhatConvertsSync, hasAnyWhatConvertsCredentials, runGoogleAdsSync, hasAnyGoogleAdsCredentials } = require('./sync');
+const {
+  runWhatConvertsSync, hasAnyWhatConvertsCredentials,
+  runGoogleAdsSync, hasAnyGoogleAdsCredentials,
+  runMetaAdsSync, hasMetaCredentials
+} = require('./sync');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -68,6 +72,17 @@ function startGoogleAdsSync() {
   });
 }
 
+function startMetaAdsSync() {
+  if (!hasMetaCredentials()) {
+    console.log('[sync] Meta Ads credentials not set, skipping sync');
+    return;
+  }
+  runMetaAdsSync().catch((err) => console.error('[sync] meta_ads failed:', err));
+  cron.schedule('*/30 * * * *', () => {
+    runMetaAdsSync().catch((err) => console.error('[sync] meta_ads failed:', err));
+  });
+}
+
 init()
   .then(() => {
     app.listen(PORT, () => {
@@ -75,6 +90,7 @@ init()
     });
     startWhatConvertsSync();
     startGoogleAdsSync();
+    startMetaAdsSync();
   })
   .catch((err) => {
     console.error('Failed to initialize database:', err);

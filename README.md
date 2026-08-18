@@ -8,40 +8,57 @@ logged back into LeadPerfection.
 See `marketing-dashboard-project-brief.txt` (not committed — kept locally) for the full
 architecture and phased build plan this repo follows.
 
-## Status: Phase 1 in progress — WhatConverts + Google Ads connected, multi-brand
+## Status: Phase 1 — WhatConverts + Google Ads + Meta Ads connected, multi-brand
 
-`server/seed.js` still seeds mock leads and Meta campaigns (Meta Ads isn't wired up
-yet — the business runs both brands through one shared Meta Ads account but separate
-Facebook/Instagram pages, which needs its own attribution approach when it's built).
-WhatConverts leads and Google Ads campaign spend are both real now:
+`server/seed.js` still seeds mock leads (LeadPerfection isn't wired up yet, so those
+mock leads stand in for CRM-driven data). Everything else is real:
 
 - `server/sync/whatconverts.js` pulls leads from the WhatConverts API and upserts into
   `leads`/`journey_events`, and into `calls`/`texts` too when a lead is a phone call or
   text message (WhatConverts returns real recordings/transcripts/message bodies).
 - `server/sync/googleAds.js` pulls campaign-level spend/clicks/conversions (last 30
   days, via GAQL) and upserts into `campaigns`.
+- `server/sync/metaAds.js` pulls campaign-level spend/clicks/conversions (last 30 days)
+  and upserts into `campaigns` too. Unlike the other two platforms, both brands share
+  **one** Meta ad account — there's no per-brand credential split, so brand is instead
+  inferred per-campaign by checking which Facebook Page/Instagram account that
+  campaign's ads actually promote (`fetchCampaignBrandMap` in `metaAds.js`), matched
+  against `META_PAGE_*_ID`/`META_IG_*_ID`. Campaigns whose ads don't match either
+  brand's Page/IG (e.g. new/draft campaigns) are skipped and counted as `unattributed`
+  in the sync summary rather than guessed at. Meta also has no single "conversions"
+  metric like Google Ads — it reports an `actions` array broken out by type, and we
+  currently sum anything with "lead" in the action type as a first-pass definition;
+  this may need recalibrating once real data shows what action types this account uses.
 
-Mock and real data coexist in the same tables until Meta Ads is wired up too — re-run
-`npm run seed` if you want to clear mock leads/campaigns out first.
+Mock and real data coexist in the same tables — re-run `npm run seed` if you want to
+clear mock leads out first (campaigns don't need this since real ones are inserted
+directly with no mock campaign seed data left to clear).
 
 **Multi-brand:** the business runs two brands (Rainbow Seamless Systems, Rainbow Bath
-and Shower) with separate WhatConverts accounts *and* separate Google Ads accounts
-(both under one Google Ads Manager/MCC account), so every `leads`/`campaigns`/
+and Shower). WhatConverts and Google Ads each have separate per-brand accounts (Google
+Ads' two accounts both sit under one Manager/MCC); Meta Ads has one shared account
+attributed by Page/Instagram as described above. Every `leads`/`campaigns`/
 `journey_events` row carries a `brand` column (`seamless` or `bathshower`). Both leads
 and campaigns are de-duplicated by `(platform, brand, external_id)` rather than just
 `(platform, external_id)`, since each brand's account issues its own ID numbering and
-the two could otherwise collide. Google Ads campaigns are *updated* on each sync
+the two could otherwise collide. Campaigns (Google/Meta) are *updated* on each sync
 (current totals), not re-inserted — WhatConverts leads are immutable once created, so
 those are inserted once and skipped on repeat syncs. The Overview and Leads pages have
 a brand filter (defaults to "All brands", persisted in the browser via `localStorage`).
 
-Sync runs automatically every 30 minutes (for any brand whose credentials are set), and
-once on server startup. There are also "Sync WhatConverts now" / "Sync Google Ads now"
-buttons on the Overview page for on-demand testing, each showing a per-brand breakdown.
-`server/scripts/resetSyncedLeads.js <platform> [brand]` clears synced leads for one
-platform (optionally scoped to one brand) so the next sync recreates them from scratch
-— useful after fixing a mapping bug (campaigns don't need this since they're updated
-in place rather than accumulating duplicates).
+Sync runs automatically every 30 minutes (for any platform/brand whose credentials are
+set), and once on server startup. There are also "Sync WhatConverts now" / "Sync Google
+Ads now" / "Sync Meta Ads now" buttons on the Overview page for on-demand testing, each
+showing a per-brand breakdown. `server/scripts/resetSyncedLeads.js <platform> [brand]`
+clears synced leads for one platform (optionally scoped to one brand) so the next sync
+recreates them from scratch — useful after fixing a mapping bug (campaigns don't need
+this since they're updated in place rather than accumulating duplicates).
+
+**Operational note:** Meta's `META_ACCESS_TOKEN` is a long-lived user token (~60 days)
+generated manually via OAuth Playground/Graph API Explorer — unlike Google's refresh
+token, it does not auto-renew. It'll need to be regenerated roughly every two months
+(same process as the initial setup) or the Meta sync will start failing with an
+auth error.
 
 ## Stack
 
@@ -75,10 +92,10 @@ cp .env.example .env
 ```
 
 Edit `.env` and set `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_USERNAME`, and
-`ADMIN_PASSWORD` to your own values. Set `WHATCONVERTS_SEAMLESS_TOKEN`/`_SECRET` and/or
-`WHATCONVERTS_BATHSHOWER_TOKEN`/`_SECRET`, and the `GOOGLE_ADS_*` vars, too if you want
-those real syncs to run locally — any brand whose credentials are left blank is skipped
-(the server logs a message and continues without syncing that brand/platform).
+`ADMIN_PASSWORD` to your own values. Set the `WHATCONVERTS_*`, `GOOGLE_ADS_*`, and
+`META_*` vars too if you want those real syncs to run locally — any platform/brand
+whose credentials are left blank is skipped (the server logs a message and continues
+without syncing that one).
 
 ```bash
 npm run seed
@@ -92,10 +109,10 @@ Visit `http://localhost:3000` and sign in with the admin credentials from `.env`
 1. In the Render dashboard, add a **Postgres** instance (free tier is fine for this
    volume). Copy its **Internal Database URL**.
 2. On the web service for this repo, set environment variables: `DATABASE_URL` (the
-   internal URL from step 1), `SESSION_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`,
-   `WHATCONVERTS_SEAMLESS_TOKEN`/`_SECRET` + `WHATCONVERTS_BATHSHOWER_TOKEN`/`_SECRET`,
-   and the `GOOGLE_ADS_*` vars from `.env.example` (one brand's credentials can be added
-   later — that sync just stays skipped until then).
+   internal URL from step 1), `SESSION_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and
+   the `WHATCONVERTS_*`, `GOOGLE_ADS_*`, and `META_*` vars from `.env.example` (any
+   platform/brand's credentials can be added later — that sync just stays skipped
+   until then).
 3. Build command: `npm install`. Start command: `npm start`.
 4. After the first deploy succeeds, run `npm run seed` once (Render's Shell tab, or a
    one-off job) to create the admin user and mock data against the new database.
@@ -112,10 +129,11 @@ server/
     auth.js           login / logout / session
     overview.js        spend, leads, conversions by source
     leads.js           lead list + full journey detail
-    sync.js             manual sync triggers (POST /api/sync/whatconverts, /google-ads)
+    sync.js             manual sync triggers (POST /api/sync/{whatconverts,google-ads,meta-ads})
   sync/
     whatconverts.js     WhatConverts API client + lead mapping (credentials passed in per call)
     googleAds.js         Google Ads REST/GAQL client (token refresh + campaign query)
+    metaAds.js            Meta Graph API client (campaign insights + Page/IG brand attribution)
     index.js             orchestrator: loops configured brands per platform, fetch, upsert
   scripts/
     resetSyncedLeads.js  clears synced leads for a platform/brand to force a clean re-sync
@@ -129,18 +147,13 @@ public/
 
 ## Next steps (Phase 1+)
 
-1. Connect Meta Ads. Confirmed structure: both brands share **one** Meta Ads account
-   (unlike Google Ads' two separate accounts), but post through separate Facebook and
-   Instagram pages per brand — so brand attribution has to come from which page/account
-   an ad or lead-form submission belongs to, not from account-level credentials like
-   WhatConverts/Google Ads. Work out that mapping before wiring up the sync.
-2. Call LeadPerfection's `GetLeadSourceValidParameters` to get valid `businessID` /
+1. Call LeadPerfection's `GetLeadSourceValidParameters` to get valid `businessID` /
    `promoterID` / `productsold` codes per brand (LeadPerfection's `businessID` is exactly
    the field for multi-brand Business Units), then wire the write path: new leads →
    `POST /api/Leads/AddProspect`.
-3. Sync LeadPerfection's `GetProspectData` / `GetLead` back into the DB to reflect
+2. Sync LeadPerfection's `GetProspectData` / `GetLead` back into the DB to reflect
    CRM status changes in the journey view.
-4. Connect Hatch for call recordings/transcripts.
-5. Phase 4: AI transcript analysis + AI-drafted texts, gated on LeadPerfection's DNC
+3. Connect Hatch for call recordings/transcripts.
+4. Phase 4: AI transcript analysis + AI-drafted texts, gated on LeadPerfection's DNC
    (`T` = Do Not Text) flag via `UpdateDNCStatus`, with STOP/opt-out handling before
    anything sends live (TCPA compliance).

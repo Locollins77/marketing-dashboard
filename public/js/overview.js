@@ -73,7 +73,9 @@ async function runSync(endpoint, buttonId, statusId) {
       return;
     }
     const summary = await res.json();
-    status.textContent = summary.brands.map(formatBrandResult).join(' · ');
+    const parts = summary.brands.map(formatBrandResult);
+    if (summary.unattributed) parts.push(`${summary.unattributed} campaign(s) couldn't be matched to a brand`);
+    status.textContent = parts.join(' · ');
     await loadOverview();
   } catch (err) {
     status.textContent = 'Sync failed';
@@ -88,6 +90,10 @@ document.getElementById('sync-button').addEventListener('click', () => {
 
 document.getElementById('sync-google-ads-button').addEventListener('click', () => {
   runSync('/api/sync/google-ads', 'sync-google-ads-button', 'sync-google-ads-status');
+});
+
+document.getElementById('sync-meta-ads-button').addEventListener('click', () => {
+  runSync('/api/sync/meta-ads', 'sync-meta-ads-button', 'sync-meta-ads-status');
 });
 
 renderNav('overview');

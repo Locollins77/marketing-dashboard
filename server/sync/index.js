@@ -1,6 +1,7 @@
 const { pool } = require('../db');
 const whatconverts = require('./whatconverts');
 const googleAds = require('./googleAds');
+const metaAds = require('./metaAds');
 
 const LOOKBACK_DAYS = 30;
 
@@ -192,11 +193,80 @@ function hasAnyGoogleAdsCredentials() {
   return Boolean(getGoogleAdsSharedCredentials()) && GOOGLE_ADS_BRANDS.some((b) => process.env[b.customerIdEnv]);
 }
 
+function getMetaCredentials() {
+  const { META_ACCESS_TOKEN, META_AD_ACCOUNT_ID } = process.env;
+  if (!META_ACCESS_TOKEN || !META_AD_ACCOUNT_ID) {
+    return null;
+  }
+  return {
+    accessToken: META_ACCESS_TOKEN,
+    adAccountId: META_AD_ACCOUNT_ID.replace(/^act_/, '')
+  };
+}
+
+function getMetaBrandMaps() {
+  const pageToBrand = {};
+  const igToBrand = {};
+  if (process.env.META_PAGE_SEAMLESS_ID) pageToBrand[process.env.META_PAGE_SEAMLESS_ID] = 'seamless';
+  if (process.env.META_PAGE_BATHSHOWER_ID) pageToBrand[process.env.META_PAGE_BATHSHOWER_ID] = 'bathshower';
+  if (process.env.META_IG_SEAMLESS_ID) igToBrand[process.env.META_IG_SEAMLESS_ID] = 'seamless';
+  if (process.env.META_IG_BATHSHOWER_ID) igToBrand[process.env.META_IG_BATHSHOWER_ID] = 'bathshower';
+  return { pageToBrand, igToBrand };
+}
+
+async function runMetaAdsSync() {
+  const credentials = getMetaCredentials();
+  if (!credentials) {
+    console.log('[sync] meta_ads: credentials not set, skipping');
+    return { platform: 'meta_ads', fetched: 0, inserted: 0, updated: 0, unattributed: 0, brands: [] };
+  }
+
+  const { pageToBrand, igToBrand } = getMetaBrandMaps();
+  const syncDate = new Date().toISOString();
+
+  const [insights, campaignBrandMap] = await Promise.all([
+    metaAds.fetchCampaignInsights(credentials.adAccountId, credentials.accessToken),
+    metaAds.fetchCampaignBrandMap(credentials.adAccountId, credentials.accessToken, pageToBrand, igToBrand)
+  ]);
+
+  const perBrand = { seamless: { fetched: 0, inserted: 0, updated: 0 }, bathshower: { fetched: 0, inserted: 0, updated: 0 } };
+  let unattributed = 0;
+
+  for (const insight of insights) {
+    const brand = campaignBrandMap.get(insight.campaign_id);
+    if (!brand) {
+      unattributed += 1;
+      continue;
+    }
+
+    const mapped = metaAds.mapCampaign(insight, brand, syncDate);
+    const result = await upsertMappedCampaign(mapped);
+    perBrand[brand].fetched += 1;
+    if (result.inserted) perBrand[brand].inserted += 1; else perBrand[brand].updated += 1;
+  }
+
+  const brandsResult = Object.entries(perBrand).map(([key, v]) => ({ brand: key, skipped: false, ...v }));
+  const totals = brandsResult.reduce((acc, r) => ({
+    fetched: acc.fetched + r.fetched,
+    inserted: acc.inserted + r.inserted,
+    updated: acc.updated + r.updated
+  }), { fetched: 0, inserted: 0, updated: 0 });
+
+  console.log(`[sync] meta_ads: fetched ${insights.length} campaigns, attributed ${totals.fetched}, unattributed ${unattributed}`);
+  return { platform: 'meta_ads', ...totals, unattributed, brands: brandsResult };
+}
+
+function hasMetaCredentials() {
+  return Boolean(getMetaCredentials());
+}
+
 module.exports = {
   runWhatConvertsSync,
   hasAnyWhatConvertsCredentials,
   WHATCONVERTS_BRANDS,
   runGoogleAdsSync,
   hasAnyGoogleAdsCredentials,
-  GOOGLE_ADS_BRANDS
+  GOOGLE_ADS_BRANDS,
+  runMetaAdsSync,
+  hasMetaCredentials
 };
