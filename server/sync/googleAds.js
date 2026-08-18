@@ -4,7 +4,6 @@
 // version and bump this constant.
 const API_VERSION = 'v25';
 const BASE_URL = `https://googleads.googleapis.com/${API_VERSION}`;
-const PAGE_SIZE = 1000;
 
 async function getAccessToken(credentials) {
   const res = await fetch('https://oauth2.googleapis.com/token', {
@@ -49,7 +48,6 @@ async function fetchCampaigns(customerId, credentials, accessToken) {
       },
       body: JSON.stringify({
         query: CAMPAIGN_QUERY,
-        pageSize: PAGE_SIZE,
         pageToken: pageToken || undefined
       })
     });
