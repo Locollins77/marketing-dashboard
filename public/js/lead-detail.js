@@ -16,12 +16,26 @@ const eventLabels = {
 function eventMetaLine(event) {
   if (!event.metadata) return '';
   if (event.event_type === 'ad_click') {
-    return `${event.metadata.platform.replace('_', ' ')} · ${event.metadata.campaign}`;
+    return `${escapeHtml(String(event.metadata.platform).replace('_', ' '))} · ${escapeHtml(event.metadata.campaign)}`;
   }
   if (event.event_type === 'crm_status_change') {
-    return `LeadPerfection ID ${event.metadata.lead_perfection_id || 'pending'}`;
+    return `LeadPerfection ID ${escapeHtml(event.metadata.lead_perfection_id || 'pending')}`;
   }
   return '';
+}
+
+function formatTranscript(rawText) {
+  if (!rawText) return 'No transcript available.';
+  return rawText.split('\n').filter((line) => line.trim() !== '').map((line) => {
+    const trimmed = line.trim();
+    const match = trimmed.match(/^(Caller|Recipient)\b(.*)$/);
+    if (match) {
+      const speaker = match[1];
+      const speakerClass = speaker === 'Caller' ? 'transcript-caller' : 'transcript-recipient';
+      return `<div class="transcript-line"><span class="transcript-speaker ${speakerClass}">${speaker}</span>${escapeHtml(match[2])}</div>`;
+    }
+    return `<div class="transcript-line">${escapeHtml(trimmed)}</div>`;
+  }).join('');
 }
 
 async function loadLeadDetail() {
@@ -53,7 +67,7 @@ async function loadLeadDetail() {
 
   document.getElementById('timeline').innerHTML = events.map((e) => `
     <li>
-      <div class="event-type">${eventLabels[e.event_type] || e.event_type}</div>
+      <div class="event-type">${escapeHtml(eventLabels[e.event_type] || e.event_type)}</div>
       <div class="event-time">${formatDateTime(e.timestamp)}</div>
       <div class="event-meta">${eventMetaLine(e)}</div>
     </li>
@@ -62,12 +76,12 @@ async function loadLeadDetail() {
   document.getElementById('calls-list').innerHTML = calls.map((c) => `
     <div style="margin-bottom:14px">
       <div class="platform-tag">${formatDateTime(c.call_date)} · ${Math.round(c.duration / 60)} min</div>
-      <div class="transcript">${c.transcript || 'No transcript available.'}</div>
+      <div class="transcript">${formatTranscript(c.transcript)}</div>
     </div>
   `).join('') || '<div class="platform-tag">No calls recorded yet.</div>';
 
   document.getElementById('texts-list').innerHTML = texts.map((t) => `
-    <div class="text-bubble ${t.direction}">${t.message}</div>
+    <div class="text-bubble ${t.direction}">${escapeHtml(t.message)}</div>
   `).join('') || '<div class="platform-tag">No texts recorded yet.</div>';
 }
 

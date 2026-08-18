@@ -29,7 +29,7 @@ async function loadOverview() {
 
   document.getElementById('campaign-rows').innerHTML = data.campaigns.map((c) => `
     <tr>
-      <td>${c.name}</td>
+      <td>${escapeHtml(c.name)}</td>
       <td style="text-transform:capitalize">${c.platform}</td>
       <td>${currency(c.spend)}</td>
       <td>${number(c.clicks)}</td>

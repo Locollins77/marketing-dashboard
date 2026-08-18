@@ -9,6 +9,7 @@
   --success: #16a34a;
   --warning: #d97706;
   --danger: #dc2626;
+  --accent: #0891b2;
   --radius: 8px;
 }
 
@@ -291,6 +292,18 @@ tbody tr:hover { background: var(--bg); cursor: pointer; }
   white-space: pre-wrap;
   line-height: 1.6;
 }
+
+.transcript-line {
+  margin-bottom: 6px;
+}
+
+.transcript-speaker {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.transcript-speaker.transcript-caller { color: var(--accent); }
+.transcript-speaker.transcript-recipient { color: var(--primary); }
 
 .text-bubble {
   max-width: 70%;
