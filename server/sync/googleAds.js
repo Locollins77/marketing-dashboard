@@ -2,7 +2,7 @@
 // start failing with something like "API version no longer available", check
 // https://developers.google.com/google-ads/api/docs/release-notes for the current
 // version and bump this constant.
-const API_VERSION = 'v18';
+const API_VERSION = 'v25';
 const BASE_URL = `https://googleads.googleapis.com/${API_VERSION}`;
 const PAGE_SIZE = 1000;
 
