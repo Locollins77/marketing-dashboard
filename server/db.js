@@ -105,10 +105,10 @@ async function init() {
 
     -- Campaigns move from one rolling-30-day snapshot row per campaign to one row
     -- per campaign per day, so date-range filtering can be accurate. Old snapshot
-    -- rows are the wrong shape for this (their `date` was a full sync timestamp like
+    -- rows are the wrong shape for this (their 'date' was a full sync timestamp like
     -- '2026-08-18T14:23:11.123Z', not a plain day) and would double-count spend
-    -- alongside fresh daily rows ('2026-08-18'), so clear them here. The `date LIKE
-    -- '%T%'` check makes this self-limiting to a one-time cleanup: fresh daily rows
+    -- alongside fresh daily rows ('2026-08-18'), so clear them here. The date LIKE
+    -- '%T%' check makes this self-limiting to a one-time cleanup: fresh daily rows
     -- never match it, so this becomes a no-op on every later boot rather than wiping
     -- freshly-synced data on every restart. Mock seed campaigns (external_id IS NULL)
     -- are left untouched either way.
