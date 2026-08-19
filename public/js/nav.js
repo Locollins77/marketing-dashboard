@@ -147,7 +147,7 @@ function renderNav(activePage) {
   }).join('');
 
   document.getElementById('sidebar').innerHTML = `
-    <h1>Marketing Dashboard</h1>
+    <img class="logo" src="/images/rainbow-logo3.png" alt="Rainbow Seamless Systems" />
     <nav>${navHtml}</nav>
     <div class="logout" id="logout-link">Sign out</div>
   `;
