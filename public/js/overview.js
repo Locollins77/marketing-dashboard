@@ -3,7 +3,8 @@ const number = (n) => Number(n).toLocaleString();
 
 async function loadOverview() {
   const brand = getSelectedBrand();
-  const res = await fetch(`/api/overview?brand=${encodeURIComponent(brand)}`);
+  const { start, end } = getSelectedDateRange();
+  const res = await fetch(`/api/overview?brand=${encodeURIComponent(brand)}&start=${start}&end=${end}`);
   if (res.status === 401) {
     window.location.href = '/login.html';
     return;
@@ -20,11 +21,11 @@ async function loadOverview() {
 
   document.getElementById('platform-rows').innerHTML = data.by_platform.map((p) => `
     <tr>
-      <td style="text-transform:capitalize">${p.platform}</td>
-      <td>${currency(p.spend)}</td>
-      <td>${number(p.clicks)}</td>
+      <td style="text-transform:capitalize">${escapeHtml(p.platform)}</td>
+      <td>${p.spend != null ? currency(p.spend) : '—'}</td>
+      <td>${p.clicks != null ? number(p.clicks) : '—'}</td>
       <td>${number(p.conversions)}</td>
-      <td>${p.conversions ? currency(p.spend / p.conversions) : '—'}</td>
+      <td>${p.spend != null && p.conversions ? currency(p.spend / p.conversions) : '—'}</td>
     </tr>
   `).join('');
 
@@ -40,7 +41,7 @@ async function loadOverview() {
 
   document.getElementById('source-rows').innerHTML = data.leads_by_source.map((s) => `
     <tr>
-      <td>${s.source_platform.replace('_', ' ')}</td>
+      <td style="text-transform:capitalize">${escapeHtml(s.source_platform.replace('_', ' '))}</td>
       <td>${number(s.count)}</td>
     </tr>
   `).join('');
@@ -98,4 +99,5 @@ document.getElementById('sync-meta-ads-button').addEventListener('click', () => 
 
 renderNav('overview');
 renderBrandFilter('brand-filter', loadOverview);
+renderDateRangeFilter('date-filter', loadOverview);
 loadOverview();

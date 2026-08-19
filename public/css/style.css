@@ -91,7 +91,7 @@ a:hover { text-decoration: underline; }
 .sync-button:hover { background: var(--primary-dark); }
 .sync-button:disabled { opacity: 0.6; cursor: default; }
 
-.brand-select {
+.brand-select, .date-select {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -101,10 +101,21 @@ a:hover { text-decoration: underline; }
   cursor: pointer;
 }
 
+.date-input {
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text);
+  margin-left: 6px;
+}
+
 .header-controls {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .sync-status {

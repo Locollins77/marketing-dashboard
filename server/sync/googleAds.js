@@ -26,8 +26,12 @@ async function getAccessToken(credentials) {
   return data.access_token;
 }
 
+// Including segments.date makes GAQL return one row per campaign per day instead of
+// one aggregated row for the whole date range - needed so the dashboard's date-range
+// picker can filter campaign spend accurately instead of only ever showing a fixed
+// 30-day blob.
 const CAMPAIGN_QUERY = `
-  SELECT campaign.id, campaign.name, metrics.cost_micros, metrics.clicks, metrics.conversions
+  SELECT campaign.id, campaign.name, segments.date, metrics.cost_micros, metrics.clicks, metrics.conversions
   FROM campaign
   WHERE segments.date DURING LAST_30_DAYS
     AND campaign.status != 'REMOVED'
@@ -65,7 +69,7 @@ async function fetchCampaigns(customerId, credentials, accessToken) {
   return results;
 }
 
-function mapCampaign(result, brand, syncDate) {
+function mapCampaign(result, brand) {
   const costMicros = Number(result.metrics?.costMicros || 0);
   return {
     externalId: String(result.campaign.id),
@@ -75,7 +79,7 @@ function mapCampaign(result, brand, syncDate) {
     spend: costMicros / 1_000_000,
     clicks: Number(result.metrics?.clicks || 0),
     conversions: Math.round(Number(result.metrics?.conversions || 0)),
-    date: syncDate
+    date: result.segments.date
   };
 }
 

@@ -6,8 +6,12 @@ const router = express.Router();
 
 router.get('/', asyncHandler(async (req, res) => {
   const brand = req.query.brand && req.query.brand !== 'all' ? req.query.brand : null;
-  const where = brand ? 'WHERE brand = $1' : '';
-  const params = brand ? [brand] : [];
+  const start = req.query.start || '1970-01-01';
+  const end = req.query.end || '2999-12-31';
+
+  const params = brand ? [start, end, brand] : [start, end];
+  const brandClause = brand ? 'AND brand = $3' : '';
+  const where = `WHERE LEFT(created_at, 10) BETWEEN $1 AND $2 ${brandClause}`;
 
   const { rows } = await pool.query(`
     SELECT id, source_platform, source_campaign, contact_name, contact_info,

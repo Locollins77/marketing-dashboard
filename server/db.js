@@ -38,7 +38,8 @@ async function init() {
       lead_perfection_id TEXT,
       status TEXT NOT NULL DEFAULT 'new',
       external_id TEXT,
-      brand TEXT
+      brand TEXT,
+      sync_source TEXT
     );
 
     CREATE TABLE IF NOT EXISTS calls (
@@ -71,6 +72,7 @@ async function init() {
     -- Migrations for databases created before these columns/indexes existed.
     ALTER TABLE leads ADD COLUMN IF NOT EXISTS external_id TEXT;
     ALTER TABLE leads ADD COLUMN IF NOT EXISTS brand TEXT;
+    ALTER TABLE leads ADD COLUMN IF NOT EXISTS sync_source TEXT;
     ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS brand TEXT;
     ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS external_id TEXT;
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS brand TEXT;
@@ -86,14 +88,36 @@ async function init() {
       WHERE je.lead_id = l.id AND l.source_platform = 'whatconverts'
         AND l.external_id IS NOT NULL AND je.brand IS NULL;
 
-    DROP INDEX IF EXISTS leads_source_external_idx;
+    -- One-time backfill: source_platform used to double as both the sync dedup key
+    -- and the displayed lead channel. Splitting those apart - sync_source stays a
+    -- stable 'whatconverts' identity for dedup, while source_platform becomes the
+    -- true attributed channel (google/meta/organic/direct/etc), recomputed and kept
+    -- fresh on every future sync. All real leads synced so far came via WhatConverts.
+    UPDATE leads SET sync_source = 'whatconverts'
+      WHERE external_id IS NOT NULL AND sync_source IS NULL;
 
-    CREATE UNIQUE INDEX IF NOT EXISTS leads_source_brand_external_idx
-      ON leads (source_platform, brand, external_id)
+    DROP INDEX IF EXISTS leads_source_external_idx;
+    DROP INDEX IF EXISTS leads_source_brand_external_idx;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS leads_syncsource_brand_external_idx
+      ON leads (sync_source, brand, external_id)
       WHERE external_id IS NOT NULL AND brand IS NOT NULL;
 
-    CREATE UNIQUE INDEX IF NOT EXISTS campaigns_platform_brand_external_idx
-      ON campaigns (platform, brand, external_id)
+    -- Campaigns move from one rolling-30-day snapshot row per campaign to one row
+    -- per campaign per day, so date-range filtering can be accurate. Old snapshot
+    -- rows are the wrong shape for this (their `date` was a full sync timestamp like
+    -- '2026-08-18T14:23:11.123Z', not a plain day) and would double-count spend
+    -- alongside fresh daily rows ('2026-08-18'), so clear them here. The `date LIKE
+    -- '%T%'` check makes this self-limiting to a one-time cleanup: fresh daily rows
+    -- never match it, so this becomes a no-op on every later boot rather than wiping
+    -- freshly-synced data on every restart. Mock seed campaigns (external_id IS NULL)
+    -- are left untouched either way.
+    DELETE FROM campaigns WHERE external_id IS NOT NULL AND date LIKE '%T%';
+
+    DROP INDEX IF EXISTS campaigns_platform_brand_external_idx;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS campaigns_platform_brand_external_date_idx
+      ON campaigns (platform, brand, external_id, date)
       WHERE external_id IS NOT NULL AND brand IS NOT NULL;
   `);
 }

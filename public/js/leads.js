@@ -4,7 +4,8 @@ function formatDate(iso) {
 
 async function loadLeads() {
   const brand = getSelectedBrand();
-  const res = await fetch(`/api/leads?brand=${encodeURIComponent(brand)}`);
+  const { start, end } = getSelectedDateRange();
+  const res = await fetch(`/api/leads?brand=${encodeURIComponent(brand)}&start=${start}&end=${end}`);
   if (res.status === 401) {
     window.location.href = '/login.html';
     return;
@@ -26,4 +27,5 @@ async function loadLeads() {
 
 renderNav('leads');
 renderBrandFilter('brand-filter', loadLeads);
+renderDateRangeFilter('date-filter', loadLeads);
 loadLeads();

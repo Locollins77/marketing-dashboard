@@ -25,7 +25,11 @@ async function fetchCampaignInsights(adAccountId, accessToken) {
   const url = new URL(`${BASE_URL}/act_${adAccountId}/insights`);
   url.searchParams.set('level', 'campaign');
   url.searchParams.set('date_preset', 'last_30d');
-  url.searchParams.set('fields', 'campaign_id,campaign_name,spend,clicks,actions');
+  // time_increment=1 makes Meta return one row per campaign per day instead of one
+  // aggregated row for the whole date range - needed so the dashboard's date-range
+  // picker can filter campaign spend accurately instead of only showing a fixed blob.
+  url.searchParams.set('time_increment', '1');
+  url.searchParams.set('fields', 'campaign_id,campaign_name,date_start,spend,clicks,actions');
   url.searchParams.set('limit', '500');
   url.searchParams.set('access_token', accessToken);
 
@@ -62,7 +66,7 @@ async function fetchCampaignBrandMap(adAccountId, accessToken, pageToBrand, igTo
 // by action type (lead, purchase, link_click, etc). Summing lead-related action types
 // is a first-pass definition; adjust once real data shows what action types this
 // account actually reports (this business is lead-gen focused, not e-commerce).
-function mapCampaign(insight, brand, syncDate) {
+function mapCampaign(insight, brand) {
   const conversions = (insight.actions || [])
     .filter((a) => a.action_type && a.action_type.toLowerCase().includes('lead'))
     .reduce((sum, a) => sum + Number(a.value || 0), 0);
@@ -75,7 +79,7 @@ function mapCampaign(insight, brand, syncDate) {
     spend: Number(insight.spend || 0),
     clicks: Number(insight.clicks || 0),
     conversions: Math.round(conversions),
-    date: syncDate
+    date: insight.date_start
   };
 }
 

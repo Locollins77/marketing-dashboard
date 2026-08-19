@@ -29,14 +29,15 @@ function daysAgoFormatted(days) {
 
 async function upsertMappedLead(mapped) {
   const { rows } = await pool.query(
-    `INSERT INTO leads (source_platform, source_campaign, contact_name, contact_info, created_at, status, external_id, brand)
-     VALUES ($1, $2, $3, $4, $5, 'new', $6, $7)
-     ON CONFLICT (source_platform, brand, external_id) WHERE external_id IS NOT NULL AND brand IS NOT NULL DO NOTHING
-     RETURNING id`,
-    [mapped.sourcePlatform, mapped.sourceCampaign, mapped.contactName, mapped.contactInfo, mapped.createdAt, mapped.externalId, mapped.brand]
+    `INSERT INTO leads (source_platform, source_campaign, contact_name, contact_info, created_at, status, external_id, brand, sync_source)
+     VALUES ($1, $2, $3, $4, $5, 'new', $6, $7, $8)
+     ON CONFLICT (sync_source, brand, external_id) WHERE external_id IS NOT NULL AND brand IS NOT NULL
+     DO UPDATE SET source_platform = EXCLUDED.source_platform, source_campaign = EXCLUDED.source_campaign
+     RETURNING id, (xmax = 0) AS inserted`,
+    [mapped.sourcePlatform, mapped.sourceCampaign, mapped.contactName, mapped.contactInfo, mapped.createdAt, mapped.externalId, mapped.brand, mapped.syncSource]
   );
 
-  if (rows.length === 0) {
+  if (!rows[0].inserted) {
     return { inserted: false };
   }
 
@@ -135,16 +136,16 @@ async function upsertMappedCampaign(mapped) {
   const { rows } = await pool.query(
     `INSERT INTO campaigns (platform, name, spend, clicks, conversions, date, brand, external_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     ON CONFLICT (platform, brand, external_id) WHERE external_id IS NOT NULL AND brand IS NOT NULL
+     ON CONFLICT (platform, brand, external_id, date) WHERE external_id IS NOT NULL AND brand IS NOT NULL
      DO UPDATE SET name = EXCLUDED.name, spend = EXCLUDED.spend, clicks = EXCLUDED.clicks,
-       conversions = EXCLUDED.conversions, date = EXCLUDED.date
+       conversions = EXCLUDED.conversions
      RETURNING (xmax = 0) AS inserted`,
     [mapped.platform, mapped.name, mapped.spend, mapped.clicks, mapped.conversions, mapped.date, mapped.brand, mapped.externalId]
   );
   return { inserted: rows[0].inserted };
 }
 
-async function syncGoogleAdsBrand(brandConfig, credentials, accessToken, syncDate) {
+async function syncGoogleAdsBrand(brandConfig, credentials, accessToken) {
   const customerId = process.env[brandConfig.customerIdEnv];
   if (!customerId) {
     console.log(`[sync] google_ads (${brandConfig.key}): customer ID not set, skipping`);
@@ -156,7 +157,7 @@ async function syncGoogleAdsBrand(brandConfig, credentials, accessToken, syncDat
   let updated = 0;
 
   for (const raw of rawCampaigns) {
-    const mapped = googleAds.mapCampaign(raw, brandConfig.key, syncDate);
+    const mapped = googleAds.mapCampaign(raw, brandConfig.key);
     const result = await upsertMappedCampaign(mapped);
     if (result.inserted) inserted += 1; else updated += 1;
   }
@@ -173,11 +174,10 @@ async function runGoogleAdsSync() {
   }
 
   const accessToken = await googleAds.getAccessToken(credentials);
-  const syncDate = new Date().toISOString();
 
   const results = [];
   for (const brandConfig of GOOGLE_ADS_BRANDS) {
-    results.push(await syncGoogleAdsBrand(brandConfig, credentials, accessToken, syncDate));
+    results.push(await syncGoogleAdsBrand(brandConfig, credentials, accessToken));
   }
 
   const totals = results.reduce((acc, r) => ({
@@ -222,7 +222,6 @@ async function runMetaAdsSync() {
   }
 
   const { pageToBrand, igToBrand } = getMetaBrandMaps();
-  const syncDate = new Date().toISOString();
 
   const [insights, campaignBrandMap] = await Promise.all([
     metaAds.fetchCampaignInsights(credentials.adAccountId, credentials.accessToken),
@@ -239,7 +238,7 @@ async function runMetaAdsSync() {
       continue;
     }
 
-    const mapped = metaAds.mapCampaign(insight, brand, syncDate);
+    const mapped = metaAds.mapCampaign(insight, brand);
     const result = await upsertMappedCampaign(mapped);
     perBrand[brand].fetched += 1;
     if (result.inserted) perBrand[brand].inserted += 1; else perBrand[brand].updated += 1;

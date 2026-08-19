@@ -9,62 +9,72 @@ function daysAgo(n, hour = 9) {
   return d.toISOString();
 }
 
+// Campaign rows are stored one-per-day (matching real synced data), so mock dates
+// need to be plain YYYY-MM-DD, not a full timestamp.
+function daysAgoDateOnly(n) {
+  return daysAgo(n).slice(0, 10);
+}
+
 const campaigns = [
-  { platform: 'google', name: 'Search - Roofing Emergency', spend: 3120.45, clicks: 842, conversions: 38, date: daysAgo(20), brand: 'seamless' },
-  { platform: 'google', name: 'Search - Gutter Install', spend: 1875.10, clicks: 511, conversions: 22, date: daysAgo(20), brand: 'seamless' },
-  { platform: 'google', name: 'PMax - Storm Damage', spend: 2410.00, clicks: 690, conversions: 19, date: daysAgo(20), brand: 'bathshower' },
-  { platform: 'meta', name: 'Lead Form - Roof Inspection', spend: 1640.75, clicks: 1203, conversions: 41, date: daysAgo(20), brand: 'seamless' },
-  { platform: 'meta', name: 'Retargeting - Free Estimate', spend: 980.30, clicks: 654, conversions: 17, date: daysAgo(20), brand: 'bathshower' },
-  { platform: 'meta', name: 'Lookalike - Homeowners 35+', spend: 1325.60, clicks: 890, conversions: 24, date: daysAgo(20), brand: 'bathshower' }
+  { platform: 'google', name: 'Search - Roofing Emergency', spend: 3120.45, clicks: 842, conversions: 38, date: daysAgoDateOnly(20), brand: 'seamless' },
+  { platform: 'google', name: 'Search - Gutter Install', spend: 1875.10, clicks: 511, conversions: 22, date: daysAgoDateOnly(20), brand: 'seamless' },
+  { platform: 'google', name: 'PMax - Storm Damage', spend: 2410.00, clicks: 690, conversions: 19, date: daysAgoDateOnly(20), brand: 'bathshower' },
+  { platform: 'meta', name: 'Lead Form - Roof Inspection', spend: 1640.75, clicks: 1203, conversions: 41, date: daysAgoDateOnly(20), brand: 'seamless' },
+  { platform: 'meta', name: 'Retargeting - Free Estimate', spend: 980.30, clicks: 654, conversions: 17, date: daysAgoDateOnly(20), brand: 'bathshower' },
+  { platform: 'meta', name: 'Lookalike - Homeowners 35+', spend: 1325.60, clicks: 890, conversions: 24, date: daysAgoDateOnly(20), brand: 'bathshower' }
 ];
 
+// source_platform values match the TRUE channel naming used by real WhatConverts-
+// derived leads and campaigns.platform ('google'/'meta'/'organic'/'direct'), not
+// legacy 'google_ads'/'meta_ads'/'whatconverts' bucket names - WhatConverts is a
+// call-tracking/attribution tool, not a lead source itself, so it never appears here.
 const leadSeeds = [
   {
-    name: 'Karen Whitfield', phone: '(614) 555-0142', platform: 'google_ads', brand: 'seamless',
+    name: 'Karen Whitfield', phone: '(614) 555-0142', platform: 'google', brand: 'seamless',
     campaign: 'Search - Roofing Emergency', daysBack: 14, status: 'converted', lpid: 'LP-10234'
   },
   {
-    name: 'Marcus Boyd', phone: '(614) 555-0187', platform: 'meta_ads', brand: 'seamless',
+    name: 'Marcus Boyd', phone: '(614) 555-0187', platform: 'meta', brand: 'seamless',
     campaign: 'Lead Form - Roof Inspection', daysBack: 12, status: 'appointment', lpid: 'LP-10241'
   },
   {
-    name: 'Priya Nair', phone: '(614) 555-0163', platform: 'whatconverts', brand: 'bathshower',
+    name: 'Priya Nair', phone: '(614) 555-0163', platform: 'organic', brand: 'bathshower',
     campaign: 'Organic - Google Business Profile', daysBack: 11, status: 'contacted', lpid: 'LP-10255'
   },
   {
-    name: 'Devon Ellis', phone: '(614) 555-0129', platform: 'google_ads', brand: 'bathshower',
+    name: 'Devon Ellis', phone: '(614) 555-0129', platform: 'google', brand: 'bathshower',
     campaign: 'Search - Gutter Install', daysBack: 10, status: 'new', lpid: null
   },
   {
-    name: 'Sam Okafor', phone: '(614) 555-0198', platform: 'meta_ads', brand: 'bathshower',
+    name: 'Sam Okafor', phone: '(614) 555-0198', platform: 'meta', brand: 'bathshower',
     campaign: 'Retargeting - Free Estimate', daysBack: 9, status: 'lost', lpid: 'LP-10260'
   },
   {
-    name: 'Lindsey Marsh', phone: '(614) 555-0177', platform: 'google_ads', brand: 'bathshower',
+    name: 'Lindsey Marsh', phone: '(614) 555-0177', platform: 'google', brand: 'bathshower',
     campaign: 'PMax - Storm Damage', daysBack: 8, status: 'converted', lpid: 'LP-10266'
   },
   {
-    name: 'Tyrell Banks', phone: '(614) 555-0115', platform: 'whatconverts', brand: 'seamless',
+    name: 'Tyrell Banks', phone: '(614) 555-0115', platform: 'direct', brand: 'seamless',
     campaign: 'Call Tracking - Main Line', daysBack: 7, status: 'appointment', lpid: 'LP-10271'
   },
   {
-    name: 'Olivia Chen', phone: '(614) 555-0104', platform: 'meta_ads', brand: 'bathshower',
+    name: 'Olivia Chen', phone: '(614) 555-0104', platform: 'meta', brand: 'bathshower',
     campaign: 'Lookalike - Homeowners 35+', daysBack: 6, status: 'contacted', lpid: null
   },
   {
-    name: 'Reggie Osei', phone: '(614) 555-0192', platform: 'google_ads', brand: 'seamless',
+    name: 'Reggie Osei', phone: '(614) 555-0192', platform: 'google', brand: 'seamless',
     campaign: 'Search - Roofing Emergency', daysBack: 4, status: 'new', lpid: null
   },
   {
-    name: 'Hannah Brooks', phone: '(614) 555-0158', platform: 'meta_ads', brand: 'seamless',
+    name: 'Hannah Brooks', phone: '(614) 555-0158', platform: 'meta', brand: 'seamless',
     campaign: 'Lead Form - Roof Inspection', daysBack: 3, status: 'appointment', lpid: 'LP-10289'
   },
   {
-    name: 'Julian Vega', phone: '(614) 555-0146', platform: 'whatconverts', brand: 'seamless',
+    name: 'Julian Vega', phone: '(614) 555-0146', platform: 'direct', brand: 'seamless',
     campaign: 'Call Tracking - Main Line', daysBack: 2, status: 'new', lpid: null
   },
   {
-    name: 'Faith Adeyemi', phone: '(614) 555-0133', platform: 'google_ads', brand: 'bathshower',
+    name: 'Faith Adeyemi', phone: '(614) 555-0133', platform: 'google', brand: 'bathshower',
     campaign: 'Search - Gutter Install', daysBack: 1, status: 'contacted', lpid: null
   }
 ];

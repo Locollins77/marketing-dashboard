@@ -34,17 +34,48 @@ Mock and real data coexist in the same tables — re-run `npm run seed` if you w
 clear mock leads out first (campaigns don't need this since real ones are inserted
 directly with no mock campaign seed data left to clear).
 
+**WhatConverts is call-tracking/attribution, not a lead source.** Early on this repo
+treated `whatconverts` as if it were a platform bucket alongside `google`/`meta` — that
+was wrong. WhatConverts' job is telling us which *real* channel each lead came from
+(including phone calls Google/Meta's own reporting can't see), via its `lead_source`/
+`lead_medium` fields. So `leads.source_platform` now holds the true attributed channel
+(`google`, `meta`, `organic`, `direct`, `referral`, or whatever else WhatConverts
+reports) computed by `normalizeSourcePlatform()` in `server/sync/whatconverts.js` —
+"whatconverts" itself never appears there, only as the sync-tool label in page
+subtitles/button text. Because that channel is a *derived* value that can be
+recalibrated as we see more real data, it can't also be the stable key used to prevent
+duplicate leads on re-sync — so leads have a separate `sync_source` column (always
+`'whatconverts'` for now) that dedup is keyed on instead, while `source_platform` gets
+refreshed to the latest mapping logic on every sync. The "unrecognized source/medium"
+log line in `runWhatConvertsSync` output flags any `lead_source`/`lead_medium`
+combination the mapping doesn't yet handle, for calibration.
+
 **Multi-brand:** the business runs two brands (Rainbow Seamless Systems, Rainbow Bath
 and Shower). WhatConverts and Google Ads each have separate per-brand accounts (Google
 Ads' two accounts both sit under one Manager/MCC); Meta Ads has one shared account
 attributed by Page/Instagram as described above. Every `leads`/`campaigns`/
-`journey_events` row carries a `brand` column (`seamless` or `bathshower`). Both leads
-and campaigns are de-duplicated by `(platform, brand, external_id)` rather than just
-`(platform, external_id)`, since each brand's account issues its own ID numbering and
-the two could otherwise collide. Campaigns (Google/Meta) are *updated* on each sync
-(current totals), not re-inserted — WhatConverts leads are immutable once created, so
-those are inserted once and skipped on repeat syncs. The Overview and Leads pages have
-a brand filter (defaults to "All brands", persisted in the browser via `localStorage`).
+`journey_events` row carries a `brand` column (`seamless` or `bathshower`). Leads are
+de-duplicated by `(sync_source, brand, external_id)`; campaigns by `(platform, brand,
+external_id, date)` — see below for why campaigns also key on date. Campaigns
+(Google/Meta) are *updated* on each sync (current totals for that day), not
+re-inserted; WhatConverts leads are immutable once created, so those are inserted once
+and only their `source_platform`/`source_campaign` get refreshed on repeat syncs. The
+Overview and Leads pages have a brand filter (defaults to "All brands", persisted in
+the browser via `localStorage`).
+
+**Date range picker:** Overview and Leads both have a date-range filter (Today, Last 7
+Days, Last 30 Days [default], This Month, Last Month, Custom Range — `renderDateRangeFilter`
+in `nav.js`, persisted via `localStorage` alongside the brand filter) that combines with
+the brand filter on every request. This is why campaigns are stored **one row per
+campaign per day** rather than one rolling 30-day total per campaign — Google Ads'
+`googleAds.js` now includes `segments.date` in its GAQL query and Meta's `metaAds.js`
+uses `time_increment=1`, so every sync pulls a full daily breakdown instead of one
+aggregate blob, and the Overview API can filter/sum campaigns by whatever date range is
+selected. The Overview's "Spend & conversions by platform" table is a blended view (see
+`server/routes/overview.js`) — a `FULL OUTER JOIN` of ad spend (from `campaigns`,
+grouped by `platform`) with lead counts (from `leads`, grouped by the true
+`source_platform`), so every real channel shows up with spend where ad data exists and
+"—" where it doesn't (organic/direct/referral).
 
 Sync runs automatically every 30 minutes (for any platform/brand whose credentials are
 set), and once on server startup. There are also "Sync WhatConverts now" / "Sync Google
@@ -72,8 +103,8 @@ auth error.
 
 ## Data model
 
-- `leads` — id, source_platform, source_campaign, contact_info, created_at, lead_perfection_id, status, external_id, brand (unique per source_platform + brand, used to de-dupe synced leads)
-- `campaigns` — id, platform, name, spend, clicks, conversions, date, brand, external_id (unique per platform + brand, used to update in place on re-sync)
+- `leads` — id, source_platform (true channel: google/meta/organic/direct/etc, NOT "whatconverts"), source_campaign, contact_info, created_at, lead_perfection_id, status, external_id, brand, sync_source (stable dedup identity, e.g. 'whatconverts' — unique together with brand + external_id)
+- `campaigns` — id, platform, name, spend, clicks, conversions, date (one row per campaign per day), brand, external_id (unique per platform + brand + external_id + date, used to update in place on re-sync)
 - `calls` — id, lead_id, call_recording_url, transcript, duration, call_date
 - `texts` — id, lead_id, direction, message, sent_at, ai_generated
 - `journey_events` — id, lead_id, event_type, timestamp, metadata (JSON), brand
@@ -131,7 +162,7 @@ server/
     leads.js           lead list + full journey detail
     sync.js             manual sync triggers (POST /api/sync/{whatconverts,google-ads,meta-ads})
   sync/
-    whatconverts.js     WhatConverts API client + lead mapping (credentials passed in per call)
+    whatconverts.js     WhatConverts API client + lead mapping, incl. true-channel attribution (credentials passed in per call)
     googleAds.js         Google Ads REST/GAQL client (token refresh + campaign query)
     metaAds.js            Meta Graph API client (campaign insights + Page/IG brand attribution)
     index.js             orchestrator: loops configured brands per platform, fetch, upsert

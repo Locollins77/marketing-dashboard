@@ -62,14 +62,49 @@ function normalizeLeadType(rawType) {
   return String(rawType || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
 }
 
+// WhatConverts is a call-tracking/attribution tool, not a lead source itself - every
+// lead needs to be tagged with the TRUE channel it came from (google/meta/organic/
+// direct/etc), derived from WhatConverts' own lead_source + lead_medium fields,
+// rather than labeled "whatconverts". lead_source is typically the network/domain
+// (google, bing, facebook, direct) and lead_medium the channel type (cpc, organic,
+// referral) - e.g. source=google+medium=organic is an organic Google lead, not paid.
+// This mapping is a first pass; unmatched values fall through to 'other' and get
+// logged so it can be calibrated against real data.
+function normalizeSourcePlatform(rawSource, rawMedium) {
+  const source = String(rawSource || '').toLowerCase().trim();
+  const medium = String(rawMedium || '').toLowerCase().trim();
+
+  if (!source || source === 'direct' || source === '(direct)') return 'direct';
+
+  const isOrganic = medium.includes('organic') || medium.includes('social');
+  const isReferral = medium.includes('referral');
+
+  if (source.includes('google')) return isOrganic ? 'organic' : 'google';
+  if (source.includes('facebook') || source.includes('instagram') || source.includes('meta') || source.includes('fb')) {
+    return isOrganic ? 'organic' : 'meta';
+  }
+  if (isOrganic) return 'organic';
+  if (isReferral) return 'referral';
+
+  return source || 'other';
+}
+
+const KNOWN_SOURCE_PLATFORMS = new Set(['direct', 'organic', 'referral', 'google', 'meta']);
+
 function mapLead(lead, brand) {
   const leadType = normalizeLeadType(lead.lead_type);
+  const sourcePlatform = normalizeSourcePlatform(lead.lead_source, lead.lead_medium);
+
+  if (!KNOWN_SOURCE_PLATFORMS.has(sourcePlatform)) {
+    console.log(`[sync] whatconverts: unmapped source/medium "${lead.lead_source}" / "${lead.lead_medium}" -> "${sourcePlatform}" (lead ${lead.lead_id})`);
+  }
 
   return {
     externalId: String(lead.lead_id),
-    sourcePlatform: 'whatconverts',
+    syncSource: 'whatconverts',
+    sourcePlatform,
     brand,
-    sourceCampaign: lead.lead_campaign || lead.lead_source || lead.profile || null,
+    sourceCampaign: lead.lead_campaign || null,
     contactName: lead.contact_name || 'Unknown',
     contactInfo: pickContactInfo(lead),
     createdAt: lead.date_created,
