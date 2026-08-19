@@ -58,46 +58,53 @@ function splitContactName(fullName) {
   return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
 }
 
-// Pushes a newly-inserted lead into LeadPerfection via AddProspect, so LeadPerfection
+// Pushes a newly-inserted lead into LeadPerfection via LeadAdd, so LeadPerfection
 // becomes the system of record for every lead regardless of source. Requires
-// LEADPERFECTION_* auth vars, a businessID for the lead's brand, and a default
-// promoter/product code to all be configured - any missing piece just skips the push
-// (logged) rather than failing the whole sync, same as other platforms' missing creds.
+// LEADPERFECTION_* auth vars, a brn_id (Branch/Business Unit) for the lead's brand, and
+// a default promoter/product code to all be configured - any missing piece just skips
+// the push (logged) rather than failing the whole sync, same as other platforms'
+// missing-credentials handling. Field names (brn_id/pro_id/productID) are confirmed
+// against the real LeadAdd spec - see server/sync/leadPerfection.js's header comment.
 async function pushLeadToLeadPerfection(mapped, leadId) {
   const credentials = getLeadPerfectionCredentials();
   if (!credentials) return;
 
   const brandConfig = LEADPERFECTION_BRANDS.find((b) => b.key === mapped.brand);
-  const businessId = brandConfig && process.env[brandConfig.businessIdEnv];
+  const branchId = brandConfig && process.env[brandConfig.businessIdEnv];
   const promoterId = process.env.LEADPERFECTION_PROMOTER_ID;
-  const productSold = process.env.LEADPERFECTION_PRODUCT_ID;
+  const productId = process.env.LEADPERFECTION_PRODUCT_ID;
 
-  if (!businessId || !promoterId || !productSold) {
-    console.log(`[sync] leadperfection: businessID/promoterID/productsold not fully configured for brand "${mapped.brand}", skipping push for lead ${leadId}`);
+  if (!branchId || !promoterId || !productId) {
+    console.log(`[sync] leadperfection: brn_id/pro_id/productID not fully configured for brand "${mapped.brand}", skipping push for lead ${leadId}`);
     return false;
   }
 
   if (!mapped.phone) {
-    console.log(`[sync] leadperfection: lead ${leadId} has no phone number, skipping push (AddProspect requires one)`);
+    console.log(`[sync] leadperfection: lead ${leadId} has no phone number, skipping push (LeadAdd requires one)`);
     return false;
   }
 
   const { firstName, lastName } = splitContactName(mapped.contactName);
 
   try {
-    const result = await leadPerfection.addProspect({
+    const result = await leadPerfection.leadAdd({
       firstname: firstName,
       lastname: lastName,
-      phone1: mapped.phone,
-      businessID: businessId,
-      promoterID: promoterId,
-      productsold: productSold,
-      csrid: process.env.LEADPERFECTION_CSR_ID || undefined
+      phone: mapped.phone,
+      email: mapped.email || undefined,
+      brn_id: branchId,
+      pro_id: promoterId,
+      productID: productId,
+      source: mapped.sourcePlatform,
+      datereceived: mapped.createdAt ? mapped.createdAt.slice(0, 19).replace('T', ' ') : undefined
     }, credentials);
 
-    const prospectId = result && (result.ProspectID || result.prospectId || result.prospect_id || result.ID || result.id);
+    // Response schema isn't documented (see leadPerfection.js header) - cst_id is the
+    // system's own naming for this concept elsewhere in the API, so it's the most
+    // likely field name, but casing/naming is unconfirmed until tested against real data.
+    const prospectId = result && (result.cst_id || result.Cst_id || result.CustID || result.ProspectID || result.prospectId || result.prospect_id || result.ID || result.id);
     if (!prospectId) {
-      console.log(`[sync] leadperfection: pushed lead ${leadId} but response had no recognizable prospect id - check field names against Swagger: ${JSON.stringify(result).slice(0, 300)}`);
+      console.log(`[sync] leadperfection: pushed lead ${leadId} but response had no recognizable prospect id - check the real response shape: ${JSON.stringify(result).slice(0, 300)}`);
       return false;
     }
 

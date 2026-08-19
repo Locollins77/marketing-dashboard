@@ -86,17 +86,17 @@ recreates them from scratch — useful after fixing a mapping bug (campaigns don
 this since they're updated in place rather than accumulating duplicates).
 
 **LeadPerfection (Phase 2, `server/sync/leadPerfection.js`):** one shared CRM account
-across both brands, distinguished by `businessID` (LeadPerfection's "Business Unit"
+across both brands, distinguished by `brn_id` (LeadPerfection's "Branch"/Business Unit
 concept). Two directions are wired:
 
 - **Write path:** every newly-inserted WhatConverts lead (in `upsertMappedLead` in
   `server/sync/index.js`) that has a phone number is pushed into LeadPerfection via
-  `POST /api/Leads/AddProspect`, and the returned prospect ID is saved to
+  `POST /api/Leads/LeadAdd`, and the returned prospect ID is saved to
   `leads.lead_perfection_id`. This only runs once `LEADPERFECTION_USERNAME/PASSWORD/
-  CLIENT_ID/APP_KEY`, that brand's `LEADPERFECTION_*_BUSINESS_ID`, and the shared
-  `LEADPERFECTION_PROMOTER_ID`/`LEADPERFECTION_PRODUCT_ID` are all set — any missing
-  piece just skips the push (logged) rather than failing the sync, same pattern as the
-  other platforms' missing-credentials handling.
+  CLIENT_ID/APP_KEY`, that brand's `LEADPERFECTION_*_BUSINESS_ID` (→ `brn_id`), and the
+  shared `LEADPERFECTION_PROMOTER_ID`/`LEADPERFECTION_PRODUCT_ID` (→ `pro_id`/
+  `productID`) are all set — any missing piece just skips the push (logged) rather than
+  failing the sync, same pattern as the other platforms' missing-credentials handling.
 - **Read path:** `runLeadPerfectionStatusSync()` polls `GetLead` for every lead that
   already has a `lead_perfection_id`, and writes a `crm_status_change` journey event +
   updates `leads.status` when LeadPerfection's disposition changes. Runs on the same
@@ -109,30 +109,38 @@ concept). Two directions are wired:
   WhatConverts' `normalizeSourcePlatform()`) and logs any disposition it can't map
   rather than writing raw CRM text into that column.
 
-**⚠️ Field names are best-effort, not yet verified against the live Swagger UI.** The
-Swagger docs at `training.leadperfection.com/swagger` require a logged-in LeadPerfection
-account and couldn't be fetched while writing this, so most request/response field names
-in `server/sync/leadPerfection.js` come from the project brief's summary rather than the
-raw OpenAPI schema — `lastname`/`firstname`/`address1`/`city`/`state`/`zip`/`businessID`/
-`promoterID`/`productsold`/`csrid`/`appdate`/`apptime` are quoted directly from the brief
-and are likely right, but the phone field names (`phone1`/`phone2`/`phone3`) and the
-`GetLead` query param names are guesses. **Before relying on this:**
+**⚠️ Request field names are confirmed, response field names are not.** The project
+brief's summary of the API turned out to describe a different/older surface than what
+this account actually has — it referenced an `AddProspect` endpoint and a
+`GetLeadSourceValidParameters` call that don't exist at all in the real spec. The real
+one, confirmed against the OpenAPI definition at
+`https://api.swaggerhub.com/apis/LeadPerfection/Examples/1.0/swagger.json` (a public
+SwaggerHub export — LeadPerfection's own `training.leadperfection.com/swagger` requires
+a login and couldn't be fetched), is `POST /api/Leads/LeadAdd` with fields like
+`brn_id`/`pro_id`/`productID`/`phone`/`firstname`/`lastname`, and the discovery endpoint
+is `POST /api/Leads/GetLeadsSourceSubPromoter` with single-letter type codes
+(`S`=SourceSub, `P`=Promoter, `B`=Branches, `R`=Products) — notably **no `Disposition`
+type exists**, so status codes aren't discoverable that way. That spec documents request
+parameters but not response body schemas, so what field holds the returned prospect ID
+(`LeadAdd`) and the disposition/status (`GetLead`) are still unconfirmed — both call
+sites log the raw response whenever they can't find a recognizable field, to calibrate
+against real data (same pattern as WhatConverts' "unmapped source/medium" logging).
+**Before relying on this:**
 
 1. Get real credentials (`LEADPERFECTION_USERNAME`/`PASSWORD`/`CLIENT_ID`/`APP_KEY`) and
    set them locally, then run `node server/scripts/leadPerfectionValidParams.js` — this
-   calls `GetLeadSourceValidParameters` for `SubSource`/`Promoter`/`Disposition`/
-   `Products` and prints the valid codes for this account, confirming the auth flow and
-   giving the real `businessID`/`promoterID`/`productsold` values to put in `.env`.
-2. Log into the Swagger UI directly and confirm/correct the `AddProspect` phone field
-   names and the `GetLead` request/response field names in `leadPerfection.js` — the
-   status-sync code logs the raw response whenever it can't find a recognizable
-   `Disposition`/`Status` field, which will surface the real field names in Render/local
-   logs the first time it runs against real data (same calibration pattern as
-   WhatConverts' "unmapped source/medium" logging).
-3. Test `AddProspect` against one real lead before trusting it at volume, and compare
-   against `AddLead` per the brief's open question — `AddProspect` was picked as the
-   default here since the brief frames it as the endpoint built for automation, but this
-   hasn't been validated against real account data yet.
+   calls `GetLeadsSourceSubPromoter` for each type code and prints the valid codes for
+   this account, confirming the auth flow and giving the real branch/promoter/product
+   values to put in `.env`.
+2. Test `LeadAdd` against one real lead and check the logs for the "no recognizable
+   prospect id" warning — if it fires, inspect the logged raw response and fix the
+   `prospectId` field-name guess in `pushLeadToLeadPerfection` (`server/sync/index.js`).
+3. Once a lead has a real `lead_perfection_id`, trigger the status sync and check for
+   the "no recognizable disposition/status field" warning the same way, to fix
+   `getLead`'s response parsing in `runLeadPerfectionStatusSync`.
+4. If LeadPerfection support can grant direct login access to `training.leadperfection.com/
+   swagger`, that would confirm both directions' response schemas at once rather than
+   discovering them field-by-field through the logs above.
 
 **Operational note:** Meta's `META_ACCESS_TOKEN` is a long-lived user token (~60 days)
 generated manually via OAuth Playground/Graph API Explorer — unlike Google's refresh
@@ -214,11 +222,11 @@ server/
     whatconverts.js     WhatConverts API client + lead mapping, incl. true-channel attribution (credentials passed in per call)
     googleAds.js         Google Ads REST/GAQL client (token refresh + campaign query)
     metaAds.js            Meta Graph API client (campaign insights + Page/IG brand attribution)
-    leadPerfection.js      LeadPerfection REST client (token auth, GetLeadSourceValidParameters, AddProspect, GetLead) - field names unverified, see README warning above
+    leadPerfection.js      LeadPerfection REST client (token auth, GetLeadsSourceSubPromoter, LeadAdd, GetLead) - request fields confirmed, response fields unverified, see README warning above
     index.js             orchestrator: loops configured brands per platform, fetch, upsert; also pushes new leads to LeadPerfection and polls status changes back
   scripts/
     resetSyncedLeads.js  clears synced leads for a platform/brand to force a clean re-sync
-    leadPerfectionValidParams.js  prints valid businessID/promoterID/disposition/product codes - run once with real creds before trusting the write path
+    leadPerfectionValidParams.js  prints valid branch/promoter/product codes - run once with real creds before trusting the write path
   middleware/
     requireAuth.js     gates /api/* and page routes behind session login
 public/
@@ -231,13 +239,16 @@ public/
 
 1. Get real LeadPerfection credentials, set `LEADPERFECTION_USERNAME`/`PASSWORD`/
    `CLIENT_ID`/`APP_KEY` in `.env`, and run
-   `node server/scripts/leadPerfectionValidParams.js` to get real `businessID`/
-   `promoterID`/`productsold` codes — then fill those into `.env` and confirm the
-   `AddProspect`/`GetLead` field-name guesses in `server/sync/leadPerfection.js`
-   against the Swagger UI (see the warning under Status above).
-2. Once verified, reset any test leads pushed with wrong data and confirm `AddProspect`
-   end-to-end against one real lead before trusting it at volume; compare against
-   `AddLead` per the brief's open question.
+   `node server/scripts/leadPerfectionValidParams.js` to get real branch/promoter/
+   product codes — then fill those into `.env` (see the warning under Status above).
+2. Test `LeadAdd` end-to-end against one real lead and watch the logs for the
+   "no recognizable prospect id" / "no recognizable disposition/status field" warnings
+   to calibrate the response-field guesses, before trusting this at volume. If
+   LeadPerfection support can grant direct Swagger UI login access, that's a faster way
+   to confirm the same thing. Also worth comparing against the
+   `https://m2h2.leadperfection.com/batch/addleads.asp` webhook LeadPerfection support
+   already provided for lead-aggregator intake — it may be simpler for the write path
+   specifically, though it likely can't cover the read/status-polling side.
 3. Connect Hatch for call recordings/transcripts.
 4. Phase 4: AI transcript analysis + AI-drafted texts, gated on LeadPerfection's DNC
    (`T` = Do Not Text) flag via `UpdateDNCStatus`, with STOP/opt-out handling before

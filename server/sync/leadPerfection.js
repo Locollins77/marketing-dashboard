@@ -1,15 +1,14 @@
-// LeadPerfection REST API client (Swagger/OpenAPI at training.leadperfection.com/swagger).
+// LeadPerfection REST API client.
 //
-// IMPORTANT: the Swagger UI requires a logged-in LeadPerfection account and couldn't be
-// fetched programmatically while writing this client, so most request field names below
-// come from the project brief's summary of the docs rather than the raw OpenAPI schema.
-// The `lastname`/`firstname`/`address1`/`city`/`state`/`zip`/`businessID`/`promoterID`/
-// `productsold`/`csrid`/`appdate`/`apptime` names are quoted directly from that summary
-// and are likely correct as-is. Phone field names (`phone1`/`phone2`/`phone3`) and the
-// GetLead/GetProspectData query param names (`ProspectID`/`LeadID`/`IssuedLeadID`/
-// `StartDate`/`EndDate`/`PageSize`/`StartIndex`/`Options`) are best-effort guesses -
-// confirm against the live Swagger UI (log into training.leadperfection.com/swagger)
-// before relying on this in production, and adjust the field names here if they differ.
+// Request parameter names below are confirmed against the real OpenAPI spec at
+// https://api.swaggerhub.com/apis/LeadPerfection/Examples/1.0/swagger.json (the
+// project brief's summary turned out to describe a different/older API surface -
+// e.g. it referenced an AddProspect endpoint and GetLeadSourceValidParameters that
+// don't exist in this spec at all; the real ones are LeadAdd and
+// GetLeadsSourceSubPromoter). Response body schemas are NOT documented in that spec
+// though, so response field names below (prospect id on lead-add, disposition/status
+// on GetLead) are still best-effort guesses - both call sites log the raw response
+// whenever they can't find a recognizable field, to calibrate against real data.
 
 let cachedToken = null; // { accessToken, expiresAt }
 
@@ -19,10 +18,11 @@ function baseUrl(credentials) {
 
 async function fetchAccessToken(credentials) {
   const body = new URLSearchParams({
-    Username: credentials.username,
-    Password: credentials.password,
-    ClientID: credentials.clientId,
-    AppKey: credentials.appKey
+    grant_type: 'password',
+    username: credentials.username,
+    password: credentials.password,
+    clientid: credentials.clientId,
+    appkey: credentials.appKey
   });
 
   const res = await fetch(`${baseUrl(credentials)}/token`, {
@@ -83,41 +83,43 @@ async function post(path, params, credentials, { retry = true } = {}) {
   return res.json();
 }
 
-// type: 'SubSource' | 'Promoter' | 'Disposition' | 'Products'
+// type: 'S' (SourceSub) | 'P' (Promoter) | 'B' (Branches, i.e. Business Units) | 'R' (Products)
 // Run this first (see server/scripts/leadPerfectionValidParams.js) to discover the
-// valid businessID/promoterID/productsold values before calling addProspect for real.
-async function getLeadSourceValidParameters(type, credentials) {
-  return post('/api/Leads/GetLeadSourceValidParameters', { type }, credentials);
+// valid brn_id/pro_id/productID values before calling leadAdd for real. Note there is
+// no 'Disposition' type here - disposition/status codes aren't discoverable through
+// this endpoint (they show up in appointment/job data instead), so normalizeStatus()
+// below has to be calibrated from real GetLead responses rather than a lookup table.
+async function getLeadsSourceSubPromoter(type, credentials) {
+  return post('/api/Leads/GetLeadsSourceSubPromoter', { type }, credentials);
 }
 
-async function addProspect(fields, credentials) {
-  return post('/api/Leads/AddProspect', fields, credentials);
+async function leadAdd(fields, credentials) {
+  return post('/api/Leads/LeadAdd', fields, credentials);
 }
 
-// options bitwise flags are undocumented here - default omits it so LeadPerfection
-// falls back to whatever its own default date-range criterion is (likely lead entry
-// date). Pass startDate/endDate (YYYY-MM-DD) or prospectId to scope the query.
+// PageSize/StartIndex are marked required in the spec (defaults 10/1) even though
+// they don't make much sense for "look up one specific prospect" - always sending them.
 async function getLead(params, credentials) {
   return post('/api/Customers/GetLead', {
-    ProspectID: params.prospectId,
-    LeadID: params.leadId,
-    IssuedLeadID: params.issuedLeadId,
-    StartDate: params.startDate,
-    EndDate: params.endDate,
-    PageSize: params.pageSize,
-    StartIndex: params.startIndex
+    cst_id: params.prospectId,
+    lds_id: params.leadId,
+    ils_id: params.issuedLeadId,
+    startdate: params.startDate,
+    enddate: params.endDate,
+    PageSize: params.pageSize || 10,
+    StartIndex: params.startIndex || 1
   }, credentials);
 }
 
 // Our dashboard's lead.status vocabulary is a fixed small set (new/contacted/
 // appointment/converted/lost - see public/css/style.css .badge.* rules and the
 // "converted" filter in server/routes/overview.js), but LeadPerfection's Disposition
-// values are account-specific free text we don't know yet (that's exactly what
-// server/scripts/leadPerfectionValidParams.js's Disposition type-code is for). This is
-// a first-pass best-guess substring mapping, same approach as
-// normalizeSourcePlatform() in server/sync/whatconverts.js - unmapped values return
-// null so the caller can log them and leave status unchanged rather than writing raw
-// CRM text into a column other parts of the app assume is one of five known values.
+// values are account-specific free text we don't know yet (there's no discovery
+// endpoint for them - see getLeadsSourceSubPromoter above). This is a first-pass
+// best-guess substring mapping, same approach as normalizeSourcePlatform() in
+// server/sync/whatconverts.js - unmapped values return null so the caller can log
+// them and leave status unchanged rather than writing raw CRM text into a column
+// other parts of the app assume is one of five known values.
 function normalizeStatus(rawDisposition) {
   const d = String(rawDisposition || '').toLowerCase();
   if (!d) return null;
@@ -128,4 +130,4 @@ function normalizeStatus(rawDisposition) {
   return null;
 }
 
-module.exports = { getAccessToken, getLeadSourceValidParameters, addProspect, getLead, normalizeStatus };
+module.exports = { getAccessToken, getLeadsSourceSubPromoter, leadAdd, getLead, normalizeStatus };
