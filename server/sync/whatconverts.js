@@ -55,6 +55,14 @@ function pickContactInfo(lead) {
     || 'unknown';
 }
 
+function pickPhone(lead) {
+  return lead.contact_phone_number || lead.phone_number || null;
+}
+
+function pickEmail(lead) {
+  return lead.contact_email_address || lead.email_address || null;
+}
+
 // WhatConverts' actual API returns lead_type as "Phone Call" / "Web Form" title-case
 // strings, not the snake_case values ("phone_call") their docs describe - normalize
 // before matching so the mapping below isn't silently skipped.
@@ -107,6 +115,8 @@ function mapLead(lead, brand) {
     sourceCampaign: lead.lead_campaign || null,
     contactName: lead.contact_name || 'Unknown',
     contactInfo: pickContactInfo(lead),
+    phone: pickPhone(lead),
+    email: pickEmail(lead),
     createdAt: lead.date_created,
     eventType: EVENT_TYPE_MAP[leadType] || leadType || 'other',
     eventMetadata: {

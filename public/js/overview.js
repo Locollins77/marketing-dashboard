@@ -53,6 +53,7 @@ function formatBrandResult(b) {
   const parts = [`${b.fetched} fetched`];
   if ('inserted' in b) parts.push(`${b.inserted} new`);
   if ('updated' in b) parts.push(`${b.updated} updated`);
+  if (b.lpPushed) parts.push(`${b.lpPushed} pushed to LeadPerfection`);
   return `${label}: ${parts.join(', ')}`;
 }
 
@@ -95,6 +96,35 @@ document.getElementById('sync-google-ads-button').addEventListener('click', () =
 
 document.getElementById('sync-meta-ads-button').addEventListener('click', () => {
   runSync('/api/sync/meta-ads', 'sync-meta-ads-button', 'sync-meta-ads-status');
+});
+
+document.getElementById('sync-lead-perfection-button').addEventListener('click', async () => {
+  const button = document.getElementById('sync-lead-perfection-button');
+  const status = document.getElementById('sync-lead-perfection-status');
+  button.disabled = true;
+  status.textContent = 'Syncing…';
+
+  try {
+    const res = await fetch('/api/sync/lead-perfection', { method: 'POST' });
+    if (res.status === 401) {
+      window.location.href = '/login.html';
+      return;
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      status.textContent = data.error || 'Sync failed';
+      return;
+    }
+    const summary = await res.json();
+    status.textContent = summary.skipped
+      ? 'No credentials'
+      : `${summary.checked} lead(s) checked, ${summary.updated} status update(s)`;
+    if (summary.updated) await loadOverview();
+  } catch (err) {
+    status.textContent = 'Sync failed';
+  } finally {
+    button.disabled = false;
+  }
 });
 
 renderNav('overview');

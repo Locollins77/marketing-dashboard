@@ -19,7 +19,14 @@ function eventMetaLine(event) {
     return `${escapeHtml(String(event.metadata.platform).replace('_', ' '))} · ${escapeHtml(event.metadata.campaign)}`;
   }
   if (event.event_type === 'crm_status_change') {
-    return `LeadPerfection ID ${escapeHtml(event.metadata.lead_perfection_id || 'pending')}`;
+    const parts = [`LeadPerfection ID ${escapeHtml(event.metadata.lead_perfection_id || 'pending')}`];
+    if (event.metadata.lp_disposition) {
+      parts.push(`disposition "${escapeHtml(event.metadata.lp_disposition)}"`);
+    }
+    if (event.metadata.new_status) {
+      parts.push(`→ ${escapeHtml(event.metadata.new_status)}`);
+    }
+    return parts.join(' · ');
   }
   return '';
 }

@@ -2,6 +2,7 @@ const { pool } = require('../db');
 const whatconverts = require('./whatconverts');
 const googleAds = require('./googleAds');
 const metaAds = require('./metaAds');
+const leadPerfection = require('./leadPerfection');
 
 const LOOKBACK_DAYS = 30;
 
@@ -13,6 +14,11 @@ const WHATCONVERTS_BRANDS = [
 const GOOGLE_ADS_BRANDS = [
   { key: 'seamless', label: 'Rainbow Seamless Systems', customerIdEnv: 'GOOGLE_ADS_SEAMLESS_CUSTOMER_ID' },
   { key: 'bathshower', label: 'Rainbow Bath and Shower', customerIdEnv: 'GOOGLE_ADS_BATHSHOWER_CUSTOMER_ID' }
+];
+
+const LEADPERFECTION_BRANDS = [
+  { key: 'seamless', label: 'Rainbow Seamless Systems', businessIdEnv: 'LEADPERFECTION_SEAMLESS_BUSINESS_ID' },
+  { key: 'bathshower', label: 'Rainbow Bath and Shower', businessIdEnv: 'LEADPERFECTION_BATHSHOWER_BUSINESS_ID' }
 ];
 
 // WhatConverts rejects the milliseconds ISO precision Date#toISOString() produces
@@ -27,6 +33,83 @@ function daysAgoFormatted(days) {
   return formatWhatConvertsDate(d);
 }
 
+function getLeadPerfectionCredentials() {
+  const { LEADPERFECTION_BASE_URL, LEADPERFECTION_USERNAME, LEADPERFECTION_PASSWORD, LEADPERFECTION_CLIENT_ID, LEADPERFECTION_APP_KEY } = process.env;
+  if (!LEADPERFECTION_USERNAME || !LEADPERFECTION_PASSWORD || !LEADPERFECTION_CLIENT_ID || !LEADPERFECTION_APP_KEY) {
+    return null;
+  }
+  return {
+    baseUrl: LEADPERFECTION_BASE_URL || 'https://api.leadperfection.com',
+    username: LEADPERFECTION_USERNAME,
+    password: LEADPERFECTION_PASSWORD,
+    clientId: LEADPERFECTION_CLIENT_ID,
+    appKey: LEADPERFECTION_APP_KEY
+  };
+}
+
+function hasLeadPerfectionCredentials() {
+  return Boolean(getLeadPerfectionCredentials());
+}
+
+function splitContactName(fullName) {
+  const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: 'Unknown', lastName: 'Unknown' };
+  if (parts.length === 1) return { firstName: parts[0], lastName: 'Unknown' };
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+}
+
+// Pushes a newly-inserted lead into LeadPerfection via AddProspect, so LeadPerfection
+// becomes the system of record for every lead regardless of source. Requires
+// LEADPERFECTION_* auth vars, a businessID for the lead's brand, and a default
+// promoter/product code to all be configured - any missing piece just skips the push
+// (logged) rather than failing the whole sync, same as other platforms' missing creds.
+async function pushLeadToLeadPerfection(mapped, leadId) {
+  const credentials = getLeadPerfectionCredentials();
+  if (!credentials) return;
+
+  const brandConfig = LEADPERFECTION_BRANDS.find((b) => b.key === mapped.brand);
+  const businessId = brandConfig && process.env[brandConfig.businessIdEnv];
+  const promoterId = process.env.LEADPERFECTION_PROMOTER_ID;
+  const productSold = process.env.LEADPERFECTION_PRODUCT_ID;
+
+  if (!businessId || !promoterId || !productSold) {
+    console.log(`[sync] leadperfection: businessID/promoterID/productsold not fully configured for brand "${mapped.brand}", skipping push for lead ${leadId}`);
+    return false;
+  }
+
+  if (!mapped.phone) {
+    console.log(`[sync] leadperfection: lead ${leadId} has no phone number, skipping push (AddProspect requires one)`);
+    return false;
+  }
+
+  const { firstName, lastName } = splitContactName(mapped.contactName);
+
+  try {
+    const result = await leadPerfection.addProspect({
+      firstname: firstName,
+      lastname: lastName,
+      phone1: mapped.phone,
+      businessID: businessId,
+      promoterID: promoterId,
+      productsold: productSold,
+      csrid: process.env.LEADPERFECTION_CSR_ID || undefined
+    }, credentials);
+
+    const prospectId = result && (result.ProspectID || result.prospectId || result.prospect_id || result.ID || result.id);
+    if (!prospectId) {
+      console.log(`[sync] leadperfection: pushed lead ${leadId} but response had no recognizable prospect id - check field names against Swagger: ${JSON.stringify(result).slice(0, 300)}`);
+      return false;
+    }
+
+    await pool.query('UPDATE leads SET lead_perfection_id = $1 WHERE id = $2', [String(prospectId), leadId]);
+    console.log(`[sync] leadperfection: pushed lead ${leadId} -> prospect ${prospectId}`);
+    return true;
+  } catch (err) {
+    console.error(`[sync] leadperfection: failed to push lead ${leadId}:`, err.message);
+    return false;
+  }
+}
+
 async function upsertMappedLead(mapped) {
   const { rows } = await pool.query(
     `INSERT INTO leads (source_platform, source_campaign, contact_name, contact_info, created_at, status, external_id, brand, sync_source)
@@ -38,7 +121,7 @@ async function upsertMappedLead(mapped) {
   );
 
   if (!rows[0].inserted) {
-    return { inserted: false };
+    return { inserted: false, lpPushed: false };
   }
 
   const leadId = rows[0].id;
@@ -62,7 +145,62 @@ async function upsertMappedLead(mapped) {
     );
   }
 
-  return { inserted: true };
+  const lpPushed = await pushLeadToLeadPerfection(mapped, leadId);
+
+  return { inserted: true, lpPushed };
+}
+
+// Read path: for leads already pushed into LeadPerfection, poll GetLead to reflect CRM
+// status changes back into our DB. Field names for the response are a best guess (see
+// server/sync/leadPerfection.js) since the Swagger schema couldn't be fetched directly -
+// this logs the raw response whenever it can't find a recognizable status field, so that
+// can be calibrated against real data the same way WhatConverts' source mapping was.
+async function runLeadPerfectionStatusSync() {
+  const credentials = getLeadPerfectionCredentials();
+  if (!credentials) {
+    console.log('[sync] leadperfection: credentials not set, skipping status sync');
+    return { platform: 'leadperfection', skipped: true, checked: 0, updated: 0 };
+  }
+
+  const { rows: leads } = await pool.query(
+    `SELECT id, lead_perfection_id, status, brand FROM leads WHERE lead_perfection_id IS NOT NULL`
+  );
+
+  let updated = 0;
+
+  for (const lead of leads) {
+    try {
+      const result = await leadPerfection.getLead({ prospectId: lead.lead_perfection_id }, credentials);
+      const record = Array.isArray(result) ? result[0] : (result && (result.Leads || result.leads))?.[0] || result;
+      const rawDisposition = record && (record.Disposition || record.disposition || record.Status || record.status);
+
+      if (!rawDisposition) {
+        console.log(`[sync] leadperfection: no recognizable disposition/status field for prospect ${lead.lead_perfection_id} - check field names against Swagger: ${JSON.stringify(result).slice(0, 300)}`);
+        continue;
+      }
+
+      const mappedStatus = leadPerfection.normalizeStatus(rawDisposition);
+      if (!mappedStatus) {
+        console.log(`[sync] leadperfection: unmapped disposition "${rawDisposition}" for lead ${lead.id} (prospect ${lead.lead_perfection_id}) - leaving status as "${lead.status}"`);
+        continue;
+      }
+
+      if (mappedStatus !== lead.status) {
+        await pool.query('UPDATE leads SET status = $1 WHERE id = $2', [mappedStatus, lead.id]);
+        await pool.query(
+          'INSERT INTO journey_events (lead_id, event_type, timestamp, metadata, brand) VALUES ($1, $2, $3, $4, $5)',
+          [lead.id, 'crm_status_change', new Date().toISOString(), JSON.stringify({ lead_perfection_id: lead.lead_perfection_id, new_status: mappedStatus, lp_disposition: rawDisposition, from: lead.status }), lead.brand]
+        );
+        updated += 1;
+        console.log(`[sync] leadperfection: lead ${lead.id} status "${lead.status}" -> "${mappedStatus}" (disposition "${rawDisposition}")`);
+      }
+    } catch (err) {
+      console.error(`[sync] leadperfection: failed to fetch status for lead ${lead.id} (prospect ${lead.lead_perfection_id}):`, err.message);
+    }
+  }
+
+  console.log(`[sync] leadperfection: checked ${leads.length} leads, updated ${updated} statuses`);
+  return { platform: 'leadperfection', skipped: false, checked: leads.length, updated };
 }
 
 async function syncWhatConvertsBrand(brandConfig, startDate, endDate) {
@@ -76,15 +214,17 @@ async function syncWhatConvertsBrand(brandConfig, startDate, endDate) {
 
   const rawLeads = await whatconverts.fetchAllLeads(startDate, endDate, { token, secret });
   let inserted = 0;
+  let lpPushed = 0;
 
   for (const raw of rawLeads) {
     const mapped = whatconverts.mapLead(raw, brandConfig.key);
     const result = await upsertMappedLead(mapped);
     if (result.inserted) inserted += 1;
+    if (result.lpPushed) lpPushed += 1;
   }
 
-  console.log(`[sync] whatconverts (${brandConfig.key}): fetched ${rawLeads.length}, inserted ${inserted}, skipped ${rawLeads.length - inserted}`);
-  return { brand: brandConfig.key, skipped: false, fetched: rawLeads.length, inserted };
+  console.log(`[sync] whatconverts (${brandConfig.key}): fetched ${rawLeads.length}, inserted ${inserted}, skipped ${rawLeads.length - inserted}, pushed to leadperfection ${lpPushed}`);
+  return { brand: brandConfig.key, skipped: false, fetched: rawLeads.length, inserted, lpPushed };
 }
 
 async function runWhatConvertsSync() {
@@ -267,5 +407,8 @@ module.exports = {
   hasAnyGoogleAdsCredentials,
   GOOGLE_ADS_BRANDS,
   runMetaAdsSync,
-  hasMetaCredentials
+  hasMetaCredentials,
+  runLeadPerfectionStatusSync,
+  hasLeadPerfectionCredentials,
+  LEADPERFECTION_BRANDS
 };

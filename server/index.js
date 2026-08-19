@@ -14,7 +14,8 @@ const syncRoutes = require('./routes/sync');
 const {
   runWhatConvertsSync, hasAnyWhatConvertsCredentials,
   runGoogleAdsSync, hasAnyGoogleAdsCredentials,
-  runMetaAdsSync, hasMetaCredentials
+  runMetaAdsSync, hasMetaCredentials,
+  runLeadPerfectionStatusSync, hasLeadPerfectionCredentials
 } = require('./sync');
 
 const app = express();
@@ -83,6 +84,17 @@ function startMetaAdsSync() {
   });
 }
 
+function startLeadPerfectionSync() {
+  if (!hasLeadPerfectionCredentials()) {
+    console.log('[sync] LeadPerfection credentials not set, skipping status sync');
+    return;
+  }
+  runLeadPerfectionStatusSync().catch((err) => console.error('[sync] leadperfection failed:', err));
+  cron.schedule('*/30 * * * *', () => {
+    runLeadPerfectionStatusSync().catch((err) => console.error('[sync] leadperfection failed:', err));
+  });
+}
+
 init()
   .then(() => {
     app.listen(PORT, () => {
@@ -91,6 +103,7 @@ init()
     startWhatConvertsSync();
     startGoogleAdsSync();
     startMetaAdsSync();
+    startLeadPerfectionSync();
   })
   .catch((err) => {
     console.error('Failed to initialize database:', err);

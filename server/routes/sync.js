@@ -1,6 +1,6 @@
 const express = require('express');
 const asyncHandler = require('../asyncHandler');
-const { runWhatConvertsSync, runGoogleAdsSync, runMetaAdsSync } = require('../sync');
+const { runWhatConvertsSync, runGoogleAdsSync, runMetaAdsSync, runLeadPerfectionStatusSync } = require('../sync');
 
 const router = express.Router();
 
@@ -16,6 +16,11 @@ router.post('/google-ads', asyncHandler(async (req, res) => {
 
 router.post('/meta-ads', asyncHandler(async (req, res) => {
   const summary = await runMetaAdsSync();
+  res.json(summary);
+}));
+
+router.post('/lead-perfection', asyncHandler(async (req, res) => {
+  const summary = await runLeadPerfectionStatusSync();
   res.json(summary);
 }));
 
